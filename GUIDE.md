@@ -114,12 +114,30 @@ scp -r ./VPN/* root@123.45.67.89:/root/vpn/
 ```
 (замени IP на свой)
 
-### 3.3. Перейди в папку на сервере
+### 3.3. Вариант Б: Через GitHub (Рекомендуемый)
 
-В терминале сервера введи:
+Если ты планируешь обновлять VPN, лучше всего загрузить файлы на GitHub.
+
+**На компьютере (Windows):**
+1. [Создай токен на GitHub](https://github.com/settings/tokens) (права: `repo`).
+2. В папке проекта:
+   ```powershell
+   git init
+   git add .
+   git commit -m "vpn setup"
+   git remote add origin https://github.com/Glerik23/VPN.git
+   git push -u origin main
+   ```
+   *Когда спросит пароль — вставь Токен.*
+
+**На сервере:**
 ```bash
+git clone https://github.com/Glerik23/VPN.git /root/vpn
 cd /root/vpn
 ```
+
+### 3.4. Перейди в папку на сервере
+
 
 ---
 
