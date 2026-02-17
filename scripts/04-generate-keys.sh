@@ -2,6 +2,7 @@
 # =============================================================================
 # 04-generate-keys.sh — Генерация криптографических ключей
 # Генерирует: X25519 пару, UUID, пароль Hysteria2, REALITY short ID
+# Использует Docker-контейнер 3x-ui (xray) для генерации ключей
 # =============================================================================
 set -euo pipefail
 
@@ -21,77 +22,62 @@ ENV_FILE="$PROJECT_DIR/.env"
 
 [[ ! -f "$ENV_FILE" ]] && err "Файл .env не найден"
 
+command -v docker &> /dev/null || err "Docker не установлен. Запусти ./02-install-docker.sh"
+
 echo ""
 echo "=========================================="
 echo "  Генерация криптографических ключей"
 echo "=========================================="
 echo ""
 
-# =============================================
-# 1. Загрузка Xray для генерации ключей
-# =============================================
-XRAY_BIN="/tmp/xray-keygen"
+XRAY_IMAGE="ghcr.io/mhsanaei/3x-ui:latest"
 
-if [[ ! -f "$XRAY_BIN" ]]; then
-    info "Загрузка Xray для генерации ключей..."
-    
-    ARCH=$(uname -m)
-    case "$ARCH" in
-        x86_64)  XRAY_ARCH="64" ;;
-        aarch64) XRAY_ARCH="arm64-v8a" ;;
-        armv7l)  XRAY_ARCH="arm32-v7a" ;;
-        *)       err "Неподдерживаемая архитектура: $ARCH" ;;
-    esac
-    
-    XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${XRAY_ARCH}.zip"
-    
-    cd /tmp
-    curl -sL "$XRAY_URL" -o xray.zip
-    apt install -y unzip > /dev/null 2>&1 || true
-    unzip -o xray.zip xray -d /tmp > /dev/null 2>&1
-    mv /tmp/xray "$XRAY_BIN"
-    chmod +x "$XRAY_BIN"
-    rm -f xray.zip
-    
-    log "Xray загружен"
+# Загружаем образ, если ещё нет
+if ! docker image inspect "$XRAY_IMAGE" &> /dev/null; then
+    info "Загрузка Docker-образа 3x-ui..."
+    docker pull "$XRAY_IMAGE"
+    log "Образ загружен"
 fi
 
 # =============================================
-# 2. Генерация X25519 ключевой пары для REALITY
+# 1. Генерация X25519 ключевой пары для REALITY
 # =============================================
 info "Генерация X25519 ключевой пары для REALITY..."
 
-KEYPAIR=$("$XRAY_BIN" x25519)
-REALITY_PRIVATE_KEY=$(echo "$KEYPAIR" | grep "Private" | awk '{print $3}')
-REALITY_PUBLIC_KEY=$(echo "$KEYPAIR" | grep "Public" | awk '{print $3}')
+KEYPAIR=$(docker run --rm "$XRAY_IMAGE" xray x25519 2>/dev/null)
+REALITY_PRIVATE_KEY=$(echo "$KEYPAIR" | grep -i "Private" | awk '{print $NF}')
+REALITY_PUBLIC_KEY=$(echo "$KEYPAIR" | grep -i "Public" | awk '{print $NF}')
+
+[[ -z "$REALITY_PRIVATE_KEY" ]] && err "Не удалось сгенерировать REALITY Private Key"
+[[ -z "$REALITY_PUBLIC_KEY" ]] && err "Не удалось сгенерировать REALITY Public Key"
 
 log "REALITY Private Key: ${REALITY_PRIVATE_KEY}"
 log "REALITY Public Key:  ${REALITY_PUBLIC_KEY}"
 
 # =============================================
-# 3. Генерация REALITY Short ID (8 hex символов)
+# 2. Генерация REALITY Short ID (8 hex символов)
 # =============================================
 REALITY_SHORT_ID=$(openssl rand -hex 4)
 log "REALITY Short ID:    ${REALITY_SHORT_ID}"
 
 # =============================================
-# 4. Генерация VLESS UUID
+# 3. Генерация VLESS UUID
 # =============================================
-VLESS_UUID=$("$XRAY_BIN" uuid)
+VLESS_UUID=$(docker run --rm "$XRAY_IMAGE" xray uuid 2>/dev/null)
+[[ -z "$VLESS_UUID" ]] && err "Не удалось сгенерировать UUID"
 log "VLESS UUID:          ${VLESS_UUID}"
 
 # =============================================
-# 5. Генерация пароля Hysteria2
+# 4. Генерация пароля Hysteria2
 # =============================================
 HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 log "Пароль Hysteria2:    ${HYSTERIA_PASSWORD}"
 
 # =============================================
-# 6. Запись в .env
+# 5. Запись в .env
 # =============================================
 info "Сохранение ключей в .env..."
 
-# Обновление .env файла
 update_env() {
     local key="$1"
     local value="$2"
@@ -109,9 +95,6 @@ update_env "VLESS_UUID" "$VLESS_UUID"
 update_env "HYSTERIA_PASSWORD" "$HYSTERIA_PASSWORD"
 
 log "Ключи сохранены в .env"
-
-# Очистка
-rm -f "$XRAY_BIN"
 
 echo ""
 echo "=========================================="
