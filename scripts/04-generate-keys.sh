@@ -2,7 +2,7 @@
 # =============================================================================
 # 04-generate-keys.sh — Генерация криптографических ключей
 # Генерирует: X25519 пару, UUID, пароль Hysteria2, REALITY short ID
-# Использует Docker-контейнер 3x-ui (xray) для генерации ключей
+# Использует запущенный контейнер 3x-ui или docker run как фоллбэк
 # =============================================================================
 set -euo pipefail
 
@@ -30,13 +30,14 @@ echo "  Генерация криптографических ключей"
 echo "=========================================="
 echo ""
 
-XRAY_IMAGE="ghcr.io/mhsanaei/3x-ui:latest"
-
-# Загружаем образ, если ещё нет
-if ! docker image inspect "$XRAY_IMAGE" &> /dev/null; then
-    info "Загрузка Docker-образа 3x-ui..."
-    docker pull "$XRAY_IMAGE"
-    log "Образ загружен"
+# Определяем, как запускать xray
+# Приоритет: работающий контейнер > docker run
+if docker ps --format '{{.Names}}' | grep -q '^3x-ui$'; then
+    XRAY_CMD="docker exec 3x-ui xray"
+    info "Используем запущенный контейнер 3x-ui"
+else
+    XRAY_CMD="docker run --rm --entrypoint xray ghcr.io/mhsanaei/3x-ui:latest"
+    info "Контейнер не запущен, используем docker run"
 fi
 
 # =============================================
@@ -44,7 +45,7 @@ fi
 # =============================================
 info "Генерация X25519 ключевой пары для REALITY..."
 
-KEYPAIR=$(docker run --rm "$XRAY_IMAGE" xray x25519 2>/dev/null)
+KEYPAIR=$($XRAY_CMD x25519 2>/dev/null) || err "Не удалось запустить xray x25519"
 REALITY_PRIVATE_KEY=$(echo "$KEYPAIR" | grep -i "Private" | awk '{print $NF}')
 REALITY_PUBLIC_KEY=$(echo "$KEYPAIR" | grep -i "Public" | awk '{print $NF}')
 
@@ -63,8 +64,8 @@ log "REALITY Short ID:    ${REALITY_SHORT_ID}"
 # =============================================
 # 3. Генерация VLESS UUID
 # =============================================
-VLESS_UUID=$(docker run --rm "$XRAY_IMAGE" xray uuid 2>/dev/null)
-[[ -z "$VLESS_UUID" ]] && err "Не удалось сгенерировать UUID"
+VLESS_UUID=$($XRAY_CMD uuid 2>/dev/null) || err "Не удалось сгенерировать UUID"
+[[ -z "$VLESS_UUID" ]] && err "UUID пустой"
 log "VLESS UUID:          ${VLESS_UUID}"
 
 # =============================================
