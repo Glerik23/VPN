@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 04-generate-keys.sh — Генерация криптографических ключей
-# Генерирует: X25519 пару, UUID, пароль Hysteria2, REALITY short ID
-# Автоматически запускает контейнер 3x-ui для генерации, если он не запущен
+# Скачивает Xray binary напрямую, генерирует все ключи, сохраняет в .env
 # =============================================================================
 set -euo pipefail
 
@@ -21,7 +20,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
 
 [[ ! -f "$ENV_FILE" ]] && err "Файл .env не найден"
-command -v docker &> /dev/null || err "Docker не установлен. Запусти ./02-install-docker.sh"
 
 echo ""
 echo "=========================================="
@@ -30,100 +28,94 @@ echo "=========================================="
 echo ""
 
 # =============================================
-# 0. Убедимся, что контейнер 3x-ui запущен
+# 0. Установка зависимостей
 # =============================================
-NEED_STOP=false
+info "Проверка зависимостей..."
+apt-get install -y curl unzip > /dev/null 2>&1 || true
+command -v curl &> /dev/null || err "curl не установлен"
+log "Зависимости готовы"
 
-if ! docker ps --format '{{.Names}}' | grep -q '^3x-ui$'; then
-    info "Контейнер 3x-ui не запущен, запускаем..."
+# =============================================
+# 1. Скачивание Xray
+# =============================================
+XRAY_BIN="/tmp/xray"
 
-    # Проверяем, есть ли образ
-    XRAY_IMAGE="ghcr.io/mhsanaei/3x-ui:latest"
-    if ! docker image inspect "$XRAY_IMAGE" &> /dev/null; then
-        info "Загрузка образа 3x-ui (это займёт 1-2 минуты)..."
-        docker pull "$XRAY_IMAGE"
-        log "Образ загружен"
-    fi
-
-    # Запускаем только 3x-ui (без hysteria2)
-    docker run -d --name 3x-ui-keygen --rm "$XRAY_IMAGE" sleep 120 &> /dev/null
-    CONTAINER="3x-ui-keygen"
-    NEED_STOP=true
-
-    # Ждём запуска
-    sleep 2
-    log "Временный контейнер запущен"
+if [[ -f "$XRAY_BIN" ]] && "$XRAY_BIN" version &>/dev/null; then
+    log "Xray уже скачан"
 else
-    CONTAINER="3x-ui"
-    log "Используем запущенный контейнер 3x-ui"
+    info "Скачивание Xray..."
+
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  XRAY_ARCH="64" ;;
+        aarch64) XRAY_ARCH="arm64-v8a" ;;
+        armv7l)  XRAY_ARCH="arm32-v7a" ;;
+        *)       err "Неподдерживаемая архитектура: $ARCH" ;;
+    esac
+
+    XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${XRAY_ARCH}.zip"
+
+    info "Архитектура: $ARCH → Xray-linux-${XRAY_ARCH}.zip"
+    info "URL: $XRAY_URL"
+
+    # Скачиваем с подробным выводом
+    curl -fSL --connect-timeout 30 --max-time 120 -o /tmp/xray.zip "$XRAY_URL" || \
+        err "Не удалось скачать Xray. Проверь доступ к github.com: curl -I https://github.com"
+
+    log "Архив скачан ($(du -h /tmp/xray.zip | cut -f1))"
+
+    # Распаковка
+    info "Распаковка..."
+    cd /tmp
+    unzip -o /tmp/xray.zip xray -d /tmp || err "Не удалось распаковать архив"
+    chmod +x /tmp/xray
+    rm -f /tmp/xray.zip
+
+    # Проверка
+    "$XRAY_BIN" version &>/dev/null || err "Xray скачан, но не запускается. Возможно, неверная архитектура."
+    log "Xray готов ($(${XRAY_BIN} version 2>/dev/null | head -1))"
 fi
 
-# Находим путь к xray внутри контейнера
-XRAY_PATH=""
-for path in "/app/xray" "/usr/local/bin/xray" "/app/bin/xray-linux-amd64"; do
-    if docker exec "$CONTAINER" test -f "$path" 2>/dev/null; then
-        XRAY_PATH="$path"
-        break
-    fi
-done
-
-# Фоллбэк: ищем через find
-if [[ -z "$XRAY_PATH" ]]; then
-    XRAY_PATH=$(docker exec "$CONTAINER" find / -name "xray" -type f 2>/dev/null | head -1)
-fi
-
-[[ -z "$XRAY_PATH" ]] && { $NEED_STOP && docker stop "$CONTAINER" &>/dev/null; err "Не удалось найти xray внутри контейнера"; }
-
-info "Xray найден: $XRAY_PATH"
-
 # =============================================
-# 1. Генерация X25519 ключевой пары для REALITY
+# 2. Генерация X25519 ключевой пары для REALITY
 # =============================================
-info "Генерация X25519 ключевой пары для REALITY..."
+info "Генерация X25519 ключевой пары..."
 
-KEYPAIR=$(docker exec "$CONTAINER" "$XRAY_PATH" x25519 2>/dev/null) || \
-    { $NEED_STOP && docker stop "$CONTAINER" &>/dev/null; err "Не удалось выполнить xray x25519"; }
+KEYPAIR=$("$XRAY_BIN" x25519 2>&1)
+echo "  Результат: $KEYPAIR"
 
 REALITY_PRIVATE_KEY=$(echo "$KEYPAIR" | grep -i "Private" | awk '{print $NF}')
 REALITY_PUBLIC_KEY=$(echo "$KEYPAIR" | grep -i "Public" | awk '{print $NF}')
 
-[[ -z "$REALITY_PRIVATE_KEY" ]] && { $NEED_STOP && docker stop "$CONTAINER" &>/dev/null; err "Private Key пустой"; }
+[[ -z "$REALITY_PRIVATE_KEY" ]] && err "Private Key пустой. Вывод xray: $KEYPAIR"
+[[ -z "$REALITY_PUBLIC_KEY" ]] && err "Public Key пустой. Вывод xray: $KEYPAIR"
 
 log "REALITY Private Key: ${REALITY_PRIVATE_KEY}"
 log "REALITY Public Key:  ${REALITY_PUBLIC_KEY}"
 
 # =============================================
-# 2. Генерация REALITY Short ID
+# 3. Генерация REALITY Short ID
 # =============================================
 REALITY_SHORT_ID=$(openssl rand -hex 4)
 log "REALITY Short ID:    ${REALITY_SHORT_ID}"
 
 # =============================================
-# 3. Генерация VLESS UUID
+# 4. Генерация VLESS UUID
 # =============================================
-VLESS_UUID=$(docker exec "$CONTAINER" "$XRAY_PATH" uuid 2>/dev/null) || \
+VLESS_UUID=$("$XRAY_BIN" uuid 2>/dev/null) || \
     VLESS_UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) || \
-    VLESS_UUID=$(python3 -c "import uuid; print(uuid.uuid4())" 2>/dev/null) || \
     err "Не удалось сгенерировать UUID"
 
 log "VLESS UUID:          ${VLESS_UUID}"
 
 # =============================================
-# 4. Генерация пароля Hysteria2
+# 5. Генерация пароля Hysteria2
 # =============================================
 HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 log "Пароль Hysteria2:    ${HYSTERIA_PASSWORD}"
 
 # =============================================
-# Остановка временного контейнера
-# =============================================
-if $NEED_STOP; then
-    docker stop "$CONTAINER" &>/dev/null || true
-    log "Временный контейнер остановлен"
-fi
-
-# =============================================
-# 5. Запись в .env
+# 6. Запись в .env
 # =============================================
 info "Сохранение ключей в .env..."
 
@@ -144,6 +136,9 @@ update_env "VLESS_UUID" "$VLESS_UUID"
 update_env "HYSTERIA_PASSWORD" "$HYSTERIA_PASSWORD"
 
 log "Ключи сохранены в .env"
+
+# Очистка
+rm -f "$XRAY_BIN"
 
 echo ""
 echo "=========================================="
