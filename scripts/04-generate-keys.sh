@@ -103,11 +103,23 @@ echo "Password: [$HYSTERIA_PASSWORD]"
 info "Запись в .env..."
 cd "$PROJECT_DIR"
 
-sed -i "s|^REALITY_PRIVATE_KEY=.*|REALITY_PRIVATE_KEY=${REALITY_PRIVATE_KEY}|" "$ENV_FILE"
-sed -i "s|^REALITY_PUBLIC_KEY=.*|REALITY_PUBLIC_KEY=${REALITY_PUBLIC_KEY}|" "$ENV_FILE"
-sed -i "s|^REALITY_SHORT_ID=.*|REALITY_SHORT_ID=${REALITY_SHORT_ID}|" "$ENV_FILE"
-sed -i "s|^VLESS_UUID=.*|VLESS_UUID=${VLESS_UUID}|" "$ENV_FILE"
-sed -i "s|^HYSTERIA_PASSWORD=.*|HYSTERIA_PASSWORD=${HYSTERIA_PASSWORD}|" "$ENV_FILE"
+# Функция: заменяет значение или добавляет строку если её нет
+set_env() {
+    local key="$1"
+    local val="$2"
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
+    else
+        echo "${key}=${val}" >> "$ENV_FILE"
+    fi
+    echo "  ${key}=${val}"
+}
+
+set_env "REALITY_PRIVATE_KEY" "$REALITY_PRIVATE_KEY"
+set_env "REALITY_PUBLIC_KEY" "$REALITY_PUBLIC_KEY"
+set_env "REALITY_SHORT_ID" "$REALITY_SHORT_ID"
+set_env "VLESS_UUID" "$VLESS_UUID"
+set_env "HYSTERIA_PASSWORD" "$HYSTERIA_PASSWORD"
 
 # Проверка
 echo ""
