@@ -71,20 +71,30 @@ XRAY_EXIT=$?
 echo "Код выхода: $XRAY_EXIT"
 echo "Результат:"
 cat /tmp/xray_keys.txt
+echo ""
+echo "Hex-дамп (для отладки):"
+cat /tmp/xray_keys.txt | xxd | head -5
 echo "---"
 
 if [ $XRAY_EXIT -ne 0 ]; then
     err "xray x25519 завершился с ошибкой $XRAY_EXIT"
 fi
 
-REALITY_PRIVATE_KEY=$(grep -i Private /tmp/xray_keys.txt | awk '{print $NF}')
-REALITY_PUBLIC_KEY=$(grep -i Public /tmp/xray_keys.txt | awk '{print $NF}')
-
-echo "Private: [$REALITY_PRIVATE_KEY]"
-echo "Public: [$REALITY_PUBLIC_KEY]"
+# Берём приватный ключ — последнее слово первой строки
+REALITY_PRIVATE_KEY=$(head -1 /tmp/xray_keys.txt | awk '{print $NF}')
+echo "Private (из 1-й строки): [$REALITY_PRIVATE_KEY]"
 
 if [ -z "$REALITY_PRIVATE_KEY" ]; then
     err "Private Key пустой!"
+fi
+
+# Получаем публичный ключ из приватного (надёжный метод)
+info "Генерация Public Key из Private Key..."
+REALITY_PUBLIC_KEY=$(/tmp/xray x25519 -i "$REALITY_PRIVATE_KEY" 2>&1 | awk '{print $NF}')
+echo "Public (из -i): [$REALITY_PUBLIC_KEY]"
+
+if [ -z "$REALITY_PUBLIC_KEY" ]; then
+    err "Public Key пустой!"
 fi
 
 info "=== Генерация UUID ==="
