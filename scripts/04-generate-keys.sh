@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 04-generate-keys.sh — Генерация криптографических ключей
-# Скачивает Xray, генерирует X25519, UUID, Short ID, пароль Hysteria2
-# Записывает всё в .env
 # =============================================================================
-set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,7 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$PROJECT_DIR/.env"
 
-[[ ! -f "$ENV_FILE" ]] && err "Файл .env не найден. Выполни: cp .env.example .env"
+if [ ! -f "$ENV_FILE" ]; then
+    err "Файл .env не найден"
+fi
 
 echo ""
 echo "=========================================="
@@ -27,12 +26,12 @@ echo "  Генерация криптографических ключей"
 echo "=========================================="
 echo ""
 
-# =============================================
-# 1. Скачивание Xray
-# =============================================
+# 1. Зависимости
 info "Установка зависимостей..."
 apt-get install -y curl unzip > /dev/null 2>&1 || true
+log "Зависимости готовы"
 
+# 2. Скачивание Xray
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64)  XRAY_ARCH="64" ;;
@@ -41,35 +40,68 @@ case "$ARCH" in
     *)       err "Неподдерживаемая архитектура: $ARCH" ;;
 esac
 
-info "Скачивание Xray (архитектура: $ARCH)..."
+info "Скачивание Xray ($ARCH)..."
 curl -fSL --connect-timeout 30 -o /tmp/xray.zip \
-    "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${XRAY_ARCH}.zip" || \
-    err "Не удалось скачать Xray. Проверь: curl -I https://github.com"
+    "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${XRAY_ARCH}.zip"
 
-cd /tmp && unzip -o xray.zip xray > /dev/null 2>&1 && chmod +x xray
-cd "$PROJECT_DIR"
+if [ ! -f /tmp/xray.zip ]; then
+    err "Файл не скачался"
+fi
+log "Скачан: $(ls -lh /tmp/xray.zip | awk '{print $5}')"
 
-/tmp/xray version > /dev/null 2>&1 || err "Xray не запускается"
-log "Xray скачан"
+info "Распаковка..."
+cd /tmp
+unzip -o xray.zip xray 2>&1
+chmod +x /tmp/xray
 
-# =============================================
-# 2. Генерация ключей
-# =============================================
-info "Генерация ключей..."
+if [ ! -f /tmp/xray ]; then
+    err "Файл xray не найден после распаковки"
+fi
+log "Распаковано"
 
-KEYS=$(/tmp/xray x25519)
-REALITY_PRIVATE_KEY=$(echo "$KEYS" | grep Private | awk '{print $NF}')
-REALITY_PUBLIC_KEY=$(echo "$KEYS" | grep Public | awk '{print $NF}')
-VLESS_UUID=$(/tmp/xray uuid)
+info "Проверка xray..."
+/tmp/xray version
+log "Xray работает"
+
+# 3. Генерация ключей
+info "=== Генерация X25519 ==="
+echo "Запускаю: /tmp/xray x25519"
+/tmp/xray x25519 > /tmp/xray_keys.txt 2>&1
+XRAY_EXIT=$?
+echo "Код выхода: $XRAY_EXIT"
+echo "Результат:"
+cat /tmp/xray_keys.txt
+echo "---"
+
+if [ $XRAY_EXIT -ne 0 ]; then
+    err "xray x25519 завершился с ошибкой $XRAY_EXIT"
+fi
+
+REALITY_PRIVATE_KEY=$(grep -i Private /tmp/xray_keys.txt | awk '{print $NF}')
+REALITY_PUBLIC_KEY=$(grep -i Public /tmp/xray_keys.txt | awk '{print $NF}')
+
+echo "Private: [$REALITY_PRIVATE_KEY]"
+echo "Public: [$REALITY_PUBLIC_KEY]"
+
+if [ -z "$REALITY_PRIVATE_KEY" ]; then
+    err "Private Key пустой!"
+fi
+
+info "=== Генерация UUID ==="
+VLESS_UUID=$(/tmp/xray uuid 2>&1)
+echo "UUID: [$VLESS_UUID]"
+
+info "=== Генерация Short ID ==="
 REALITY_SHORT_ID=$(openssl rand -hex 4)
+echo "Short ID: [$REALITY_SHORT_ID]"
+
+info "=== Генерация пароля Hysteria2 ==="
 HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+echo "Password: [$HYSTERIA_PASSWORD]"
 
-[[ -z "$REALITY_PRIVATE_KEY" ]] && err "Не удалось сгенерировать Private Key"
-
-# =============================================
-# 3. Запись в .env
-# =============================================
+# 4. Запись в .env
 info "Запись в .env..."
+cd "$PROJECT_DIR"
 
 sed -i "s|^REALITY_PRIVATE_KEY=.*|REALITY_PRIVATE_KEY=${REALITY_PRIVATE_KEY}|" "$ENV_FILE"
 sed -i "s|^REALITY_PUBLIC_KEY=.*|REALITY_PUBLIC_KEY=${REALITY_PUBLIC_KEY}|" "$ENV_FILE"
@@ -77,25 +109,21 @@ sed -i "s|^REALITY_SHORT_ID=.*|REALITY_SHORT_ID=${REALITY_SHORT_ID}|" "$ENV_FILE
 sed -i "s|^VLESS_UUID=.*|VLESS_UUID=${VLESS_UUID}|" "$ENV_FILE"
 sed -i "s|^HYSTERIA_PASSWORD=.*|HYSTERIA_PASSWORD=${HYSTERIA_PASSWORD}|" "$ENV_FILE"
 
-# Проверка что записалось
+# Проверка
+echo ""
+echo "=== Проверка .env ==="
+grep -E "REALITY_PRIVATE|REALITY_PUBLIC|REALITY_SHORT|VLESS_UUID|HYSTERIA_PASSWORD" "$ENV_FILE"
+
 SAVED=$(grep "^REALITY_PRIVATE_KEY=" "$ENV_FILE" | cut -d= -f2)
-[[ -z "$SAVED" ]] && err "Ключи НЕ записались в .env!"
+if [ -z "$SAVED" ]; then
+    err "Ключи НЕ записались!"
+fi
 
 # Очистка
-rm -f /tmp/xray /tmp/xray.zip
-
-log "Все ключи записаны в .env"
+rm -f /tmp/xray /tmp/xray.zip /tmp/xray_keys.txt
 
 echo ""
 echo "=========================================="
-echo -e "  ${GREEN}Генерация завершена!${NC}"
+echo -e "  ${GREEN}Готово! Ключи записаны в .env${NC}"
 echo "=========================================="
-echo ""
-echo "  REALITY Private Key: ${REALITY_PRIVATE_KEY}"
-echo "  REALITY Public Key:  ${REALITY_PUBLIC_KEY}"
-echo "  REALITY Short ID:    ${REALITY_SHORT_ID}"
-echo "  VLESS UUID:          ${VLESS_UUID}"
-echo "  Hysteria2 пароль:    ${HYSTERIA_PASSWORD}"
-echo ""
-echo "  ⚠️  Public Key нужен клиентам — сохрани его!"
 echo ""
