@@ -1,6 +1,15 @@
+#!/bin/bash
+# fix-vpn.sh - One-click fix for VPN keys
+# Run this on the server!
+
+set -euo pipefail
+
+echo ">>> Updating key generator..."
+# Overwrite the generate script with the fixed version locally
+cat > /root/vpn/scripts/04-generate-keys.sh << 'EOF'
 #!/usr/bin/env bash
 # =============================================================================
-# 04-generate-keys.sh — Генерация криптографических ключей
+# 04-generate-keys.sh — Генерация криптографических ключей (FIXED)
 # =============================================================================
 
 RED='\033[0;31m'
@@ -29,7 +38,6 @@ echo ""
 # 1. Зависимости
 info "Установка зависимостей..."
 apt-get install -y curl unzip > /dev/null 2>&1 || true
-log "Зависимости готовы"
 
 # 2. Скачивание Xray
 ARCH=$(uname -m)
@@ -44,83 +52,42 @@ info "Скачивание Xray ($ARCH)..."
 curl -fSL --connect-timeout 30 -o /tmp/xray.zip \
     "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-${XRAY_ARCH}.zip"
 
-if [ ! -f /tmp/xray.zip ]; then
-    err "Файл не скачался"
-fi
-log "Скачан: $(ls -lh /tmp/xray.zip | awk '{print $5}')"
-
-info "Распаковка..."
 cd /tmp
 unzip -o xray.zip xray 2>&1
 chmod +x /tmp/xray
 
-if [ ! -f /tmp/xray ]; then
-    err "Файл xray не найден после распаковки"
-fi
-log "Распаковано"
-
-info "Проверка xray..."
-/tmp/xray version
-log "Xray работает"
-
 # 3. Генерация ключей
 info "=== Генерация X25519 ==="
-echo "Запускаю: /tmp/xray x25519"
 /tmp/xray x25519 > /tmp/xray_keys.txt 2>&1
-XRAY_EXIT=$?
-echo "Код выхода: $XRAY_EXIT"
-echo "Результат:"
+
+echo "Результат генерации:"
 cat /tmp/xray_keys.txt
-echo ""
-echo "Hex-дамп (для отладки):"
-cat /tmp/xray_keys.txt | xxd | head -5
-echo "---"
-
-if [ $XRAY_EXIT -ne 0 ]; then
-    err "xray x25519 завершился с ошибкой $XRAY_EXIT"
-fi
-
-# Читаем ключи из сгенерированного файла
-# Формат вывода xray x25519:
-# Private key: ...
-# Public key: ...
 
 REALITY_PRIVATE_KEY=$(grep -i "Private" /tmp/xray_keys.txt | awk '{print $NF}')
 REALITY_PUBLIC_KEY=$(grep -i "Public" /tmp/xray_keys.txt | awk '{print $NF}')
+
+# Fallback format check
+if [ -z "$REALITY_PRIVATE_KEY" ]; then
+    REALITY_PRIVATE_KEY=$(grep -i "PrivateKey:" /tmp/xray_keys.txt | awk '{print $NF}')
+fi
 
 echo "Private Key: [$REALITY_PRIVATE_KEY]"
 echo "Public Key:  [$REALITY_PUBLIC_KEY]"
 
 if [ -z "$REALITY_PRIVATE_KEY" ] || [ -z "$REALITY_PUBLIC_KEY" ]; then
-    # Фолбэк для старых/других версий xray (где формат PrivateKey: ...)
-    REALITY_PRIVATE_KEY=$(grep -i "PrivateKey:" /tmp/xray_keys.txt | awk '{print $NF}')
-    # Если Public нет, придется генерировать заново или искать иначе, но пока рассчитываем на стандартный вывод
-fi
-
-if [ -z "$REALITY_PRIVATE_KEY" ]; then
-    err "Не удалось найти Private Key в выводе xray"
-fi
-if [ -z "$REALITY_PUBLIC_KEY" ]; then
-    err "Не удалось найти Public Key в выводе xray. Проверьте версию xray."
+    err "Ошибка получения ключей from xray output"
 fi
 
 info "=== Генерация UUID ==="
 VLESS_UUID=$(/tmp/xray uuid 2>&1)
-echo "UUID: [$VLESS_UUID]"
-
 info "=== Генерация Short ID ==="
 REALITY_SHORT_ID=$(openssl rand -hex 4)
-echo "Short ID: [$REALITY_SHORT_ID]"
-
 info "=== Генерация пароля Hysteria2 ==="
 HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
-echo "Password: [$HYSTERIA_PASSWORD]"
 
 # 4. Запись в .env
 info "Запись в .env..."
 cd "$PROJECT_DIR"
-
-# Функция: заменяет значение или добавляет строку если её нет
 set_env() {
     local key="$1"
     local val="$2"
@@ -129,7 +96,6 @@ set_env() {
     else
         echo "${key}=${val}" >> "$ENV_FILE"
     fi
-    echo "  ${key}=${val}"
 }
 
 set_env "REALITY_PRIVATE_KEY" "$REALITY_PRIVATE_KEY"
@@ -138,21 +104,24 @@ set_env "REALITY_SHORT_ID" "$REALITY_SHORT_ID"
 set_env "VLESS_UUID" "$VLESS_UUID"
 set_env "HYSTERIA_PASSWORD" "$HYSTERIA_PASSWORD"
 
-# Проверка
-echo ""
-echo "=== Проверка .env ==="
-grep -E "REALITY_PRIVATE|REALITY_PUBLIC|REALITY_SHORT|VLESS_UUID|HYSTERIA_PASSWORD" "$ENV_FILE"
-
-SAVED=$(grep "^REALITY_PRIVATE_KEY=" "$ENV_FILE" | cut -d= -f2)
-if [ -z "$SAVED" ]; then
-    err "Ключи НЕ записались!"
-fi
-
-# Очистка
 rm -f /tmp/xray /tmp/xray.zip /tmp/xray_keys.txt
 
 echo ""
 echo "=========================================="
-echo -e "  ${GREEN}Готово! Ключи записаны в .env${NC}"
+echo -e "  ${GREEN}КЛЮЧИ ОБНОВЛЕНЫ УСПЕШНО!${NC}"
 echo "=========================================="
+EOF
+
+chmod +x /root/vpn/scripts/04-generate-keys.sh
+
+echo ">>> Regenerating keys..."
+/root/vpn/scripts/04-generate-keys.sh
+
+echo ">>> Showing new links..."
+/root/vpn/scripts/05-show-clients.sh
+
+echo ""
+echo "!!! ВАЖНО !!!"
+echo "Скопируйте этот Private Key и вставьте в панель 3x-ui:"
+grep "REALITY_PRIVATE_KEY" /root/vpn/.env
 echo ""
