@@ -1,0 +1,32 @@
+[DEFAULT]
+# Бан на 1 час по умолчанию
+bantime  = 3600
+# Окно проверки — 10 минут
+findtime = 600
+# 3 попытки
+maxretry = 3
+# Использовать UFW для бана
+banaction = ufw
+
+# ==================
+# Защита SSH
+# ==================
+[sshd]
+enabled  = true
+port     = 2222
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 3
+bantime  = 3600
+
+# ==================
+# Защита панели 3x-ui
+# ==================
+[3x-ui]
+enabled  = true
+port     = 2053
+filter   = 3x-ui
+logpath  = /var/log/3x-ui.log
+maxretry = 5
+bantime  = 7200
+findtime = 300

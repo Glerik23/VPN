@@ -1,0 +1,35 @@
+# Конфигурация Hysteria 2 сервера
+# Документация: https://v2.hysteria.network/docs/
+
+listen: :443
+
+# TLS — самоподписанный сертификат (генерируется скриптом 04-generate-keys.sh)
+tls:
+  cert: /etc/hysteria/cert/server.crt
+  key: /etc/hysteria/cert/server.key
+
+# Аутентификация
+auth:
+  type: password
+  password: __HYSTERIA_PASSWORD__  # Заменяется скриптом деплоя
+
+# Маскировка — если кто-то пробует порт через браузер, увидит реальный сайт
+masquerade:
+  type: proxy
+  proxy:
+    url: https://www.bing.com
+    rewriteHost: true
+
+# Подсказки по пропускной способности
+bandwidth:
+  up: __HYSTERIA_UP__  # Заменяется скриптом деплоя
+  down: __HYSTERIA_DOWN__  # Заменяется скриптом деплоя
+
+# Параметры QUIC
+quic:
+  initStreamReceiveWindow: 8388608
+  maxStreamReceiveWindow: 8388608
+  initConnReceiveWindow: 20971520
+  maxConnReceiveWindow: 20971520
+  maxIdleTimeout: 30s
+  keepAlivePeriod: 10s

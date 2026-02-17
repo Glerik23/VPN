@@ -1,0 +1,5 @@
+# VPN Server Files
+.env
+client-links.txt
+hysteria2/cert/
+*.tar.gz

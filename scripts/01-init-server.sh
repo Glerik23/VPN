@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# =============================================================================
+# 01-init-server.sh — Защита сервера
+# Настройка SSH, UFW, fail2ban, unattended-upgrades
+# Запускать от root на чистом Ubuntu 22.04+ / Debian 12+
+# =============================================================================
+set -euo pipefail
+
+# Цвета
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[✓]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+info() { echo -e "${CYAN}[i]${NC} $1"; }
+
+# --- Предварительные проверки ---
+[[ $EUID -ne 0 ]] && err "Этот скрипт нужно запускать от root"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Загрузка .env
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    source "$PROJECT_DIR/.env"
+else
+    err "Файл .env не найден. Скопируй .env.example в .env и заполни значения."
+fi
+
+SSH_PORT="${SSH_PORT:-2222}"
+F2B_MAXRETRY="${F2B_MAXRETRY:-3}"
+F2B_BANTIME="${F2B_BANTIME:-3600}"
+XUI_PORT="${XUI_PORT:-2053}"
+
+echo ""
+echo "=========================================="
+echo "  VPN-сервер — Защита сервера"
+echo "=========================================="
+echo ""
+
+# =============================================
+# 1. Обновление системы
+# =============================================
+info "Обновление системных пакетов..."
+apt update && apt upgrade -y
+log "Система обновлена"
+
+# =============================================
+# 2. Установка необходимых пакетов
+# =============================================
+info "Установка необходимых пакетов..."
+apt install -y \
+    curl wget git nano \
+    ufw fail2ban \
+    unattended-upgrades apt-listchanges \
+    qrencode jq \
+    htop net-tools
+log "Пакеты установлены"
+
+# =============================================
+# 3. Настройка SSH
+# =============================================
+info "Настройка SSH на порту ${SSH_PORT}..."
+
+# Бэкап оригинального конфига
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+# Применение защищённого SSH-конфига
+cat > /etc/ssh/sshd_config.d/99-hardened.conf << EOF
+# --- Защищённая конфигурация SSH ---
+Port ${SSH_PORT}
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+X11Forwarding no
+AllowTcpForwarding no
+EOF
+
+# Перезапуск SSH
+systemctl restart sshd
+log "SSH настроен на порту ${SSH_PORT} (только ключи)"
+
+warn "⚠️  ВАЖНО: Убедись, что SSH-ключи настроены, прежде чем отключаться!"
+warn "⚠️  Проверь в НОВОМ терминале: ssh -p ${SSH_PORT} root@${SERVER_IP}"
+
+# =============================================
+# 4. Фаервол UFW
+# =============================================
+info "Настройка фаервола UFW..."
+
+ufw --force reset
+ufw default deny incoming
+ufw default allow outgoing
+
+# SSH
+ufw allow "${SSH_PORT}/tcp" comment 'SSH'
+
+# Панель 3x-ui
+ufw allow "${XUI_PORT}/tcp" comment '3x-ui Panel'
+
+# VLESS + REALITY (TCP)
+ufw allow "${VLESS_PORT:-443}/tcp" comment 'VLESS REALITY'
+
+# Hysteria 2 (UDP)
+ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria2'
+
+ufw --force enable
+log "UFW настроен и включён"
+ufw status verbose
+
+# =============================================
+# 5. Fail2Ban
+# =============================================
+info "Настройка fail2ban..."
+
+# Копирование пользовательских конфигов
+cp "$PROJECT_DIR/configs/fail2ban/jail.local" /etc/fail2ban/jail.local
+
+# Создание фильтра для 3x-ui
+if [[ -f "$PROJECT_DIR/configs/fail2ban/filter.d/3x-ui.conf" ]]; then
+    cp "$PROJECT_DIR/configs/fail2ban/filter.d/3x-ui.conf" /etc/fail2ban/filter.d/3x-ui.conf
+fi
+
+# Обновление портов в конфиге jail
+sed -i "s/port     = 2222/port     = ${SSH_PORT}/" /etc/fail2ban/jail.local
+sed -i "s/port     = 2053/port     = ${XUI_PORT}/" /etc/fail2ban/jail.local
+sed -i "s/maxretry = 3/maxretry = ${F2B_MAXRETRY}/" /etc/fail2ban/jail.local
+sed -i "s/bantime  = 3600/bantime  = ${F2B_BANTIME}/" /etc/fail2ban/jail.local
+
+systemctl enable fail2ban
+systemctl restart fail2ban
+log "fail2ban настроен и запущен"
+
+# =============================================
+# 6. Автоматические обновления безопасности
+# =============================================
+info "Настройка автоматических обновлений безопасности..."
+
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOF
+
+systemctl enable unattended-upgrades
+log "Автоматические обновления безопасности включены"
+
+# =============================================
+# 7. Оптимизация сети
+# =============================================
+info "Применение сетевых оптимизаций..."
+
+cat >> /etc/sysctl.conf << 'EOF'
+
+# --- Сетевые оптимизации VPN-сервера ---
+# BBR — управление перегрузкой (лучшая скорость для прокси)
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+
+# Увеличение буферов
+net.core.rmem_max=16777216
+net.core.wmem_max=16777216
+net.ipv4.tcp_rmem=4096 87380 16777216
+net.ipv4.tcp_wmem=4096 65536 16777216
+
+# Включение IP-форвардинга (для прокси)
+net.ipv4.ip_forward=1
+net.ipv6.conf.all.forwarding=1
+
+# Отслеживание соединений
+net.netfilter.nf_conntrack_max=131072
+EOF
+
+sysctl -p > /dev/null 2>&1
+log "Сетевые оптимизации применены (BBR включён)"
+
+echo ""
+echo "=========================================="
+echo -e "  ${GREEN}Защита сервера завершена!${NC}"
+echo "=========================================="
+echo ""
+echo "  SSH-порт:        ${SSH_PORT}"
+echo "  Фаервол:         UFW включён"
+echo "  Защита от брута: fail2ban активен"
+echo "  Автообновления:  включены"
+echo "  TCP congestion:  BBR"
+echo ""
+warn "Следующий шаг: ./02-install-docker.sh"
+echo ""
