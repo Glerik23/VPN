@@ -90,8 +90,10 @@ fi
 
 # Получаем публичный ключ из приватного (надёжный метод)
 info "Генерация Public Key из Private Key..."
-REALITY_PUBLIC_KEY=$(/tmp/xray x25519 -i "$REALITY_PRIVATE_KEY" 2>&1 | awk '{print $NF}')
-echo "Public (из -i): [$REALITY_PUBLIC_KEY]"
+PUB_RAW=$(/tmp/xray x25519 -i "$REALITY_PRIVATE_KEY" 2>/dev/null)
+echo "Raw output: [$PUB_RAW]"
+REALITY_PUBLIC_KEY=$(echo "$PUB_RAW" | head -1 | awk '{print $NF}' | tr -d '\r\n')
+echo "Public (очищенный): [$REALITY_PUBLIC_KEY]"
 
 if [ -z "$REALITY_PUBLIC_KEY" ]; then
     err "Public Key пустой!"
