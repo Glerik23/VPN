@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # =============================================
   # 3x-ui — Xray панель (VLESS + REALITY)
@@ -51,7 +49,7 @@ services:
   # Cloudflare Warp — Приватный IP для Xray
   # =============================================
   warp:
-    image: caomingjun/warp-reg:latest
+    image: caomingjun/warp:latest
     container_name: vpn-warp
     restart: unless-stopped
     environment:
