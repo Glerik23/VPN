@@ -78,7 +78,11 @@ log "Успешная авторизация"
 info "Проверка существующих подключений..."
 LIST_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/inbounds/list" -b "$COOKIE_FILE")
 
-if echo "$LIST_RES" | grep -q "\"port\": 443"; then
+# Отладочный вывод (можно закомментировать после фикса)
+echo "DEBUG: API Response for list: $LIST_RES"
+
+# Ищем порт 443 максимально надежно (и как число, и как строку)
+if echo "$LIST_RES" | grep -qiE "\"port\":[[:space:]]*\"?443\"?"; then
     warn "Подключение на порту 443 уже существует. Пропускаю создание."
     exit 0
 fi
@@ -117,8 +121,10 @@ if [[ "$ADD_RES" == *"true"* ]]; then
     echo -e "${GREEN}  ПАНЕЛЬ НАСТРОЕНА АВТОМАТИЧЕСКИ! ${NC}"
     echo "=========================================="
     echo ""
+elif [[ "$ADD_RES" == *"Port already exists"* ]]; then
+    warn "Подключение на порту 443 уже существует. Пропускаю."
 else
-    echo "$ADD_RES"
+    echo "DEBUG: API Response for add: $ADD_RES"
     err "Не удалось создать inbound через API."
 fi
 
