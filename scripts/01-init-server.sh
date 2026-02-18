@@ -62,8 +62,16 @@ apt install -y \
 log "Пакеты установлены"
 
 # =============================================
-# 3. Настройка SSH
+# 3. Настройка пароля root
 # =============================================
+if [[ -n "$ROOT_PASSWORD" ]]; then
+    info "Установка пароля для root..."
+    printf "root:%s\n" "$ROOT_PASSWORD" | chpasswd
+    log "Пароль root изменён"
+else
+    warn "ROOT_PASSWORD не задан в .env — вход по паролю может не работать!"
+fi
+
 info "Настройка SSH на порту ${SSH_PORT}..."
 
 # Бэкап оригинального конфига
@@ -73,8 +81,8 @@ cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 cat > /etc/ssh/sshd_config.d/99-hardened.conf << EOF
 # --- Защищённая конфигурация SSH ---
 Port ${SSH_PORT}
-PermitRootLogin prohibit-password
-PasswordAuthentication no
+PermitRootLogin yes
+PasswordAuthentication yes
 PubkeyAuthentication yes
 MaxAuthTries 3
 ClientAliveInterval 300
