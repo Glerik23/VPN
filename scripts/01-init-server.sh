@@ -35,6 +35,7 @@ SSH_PORT="${SSH_PORT:-2222}"
 F2B_MAXRETRY="${F2B_MAXRETRY:-3}"
 F2B_BANTIME="${F2B_BANTIME:-3600}"
 XUI_PORT="${XUI_PORT:-2053}"
+ADGUARD_PORT="${ADGUARD_PORT:-3000}"
 
 echo ""
 echo "=========================================="
@@ -127,6 +128,9 @@ ufw allow "${VLESS_PORT:-443}/tcp" comment 'VLESS REALITY'
 
 # Hysteria 2 (UDP)
 ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria2'
+
+# AdGuard Home
+ufw allow "${ADGUARD_PORT}/tcp" comment 'AdGuard Home'
 
 ufw --force enable
 log "UFW настроен и включён"

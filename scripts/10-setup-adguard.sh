@@ -22,6 +22,7 @@ info "Генерация конфигурации AdGuard Home..."
 # Используем переменные из .env или значения по умолчанию
 ADMIN_USER="${USERNAME:-admin}"
 ADMIN_PASS="${PASSWORD:-admin}"
+ADGUARD_PORT="${ADGUARD_PORT:-3000}"
 
 # Генерация bcrypt хеша пароля через Python
 PASSWORD_HASH=$(python3 -c "import crypt; print(crypt.crypt('$ADMIN_PASS', crypt.mksalt(crypt.METHOD_SHA512)))")
@@ -30,7 +31,7 @@ PASSWORD_HASH=$(python3 -c "import crypt; print(crypt.crypt('$ADMIN_PASS', crypt
 
 cat > "$ADGUARD_CONF_DIR/AdGuardHome.yaml" <<EOF
 bind_host: 0.0.0.0
-bind_port: 3000
+bind_port: $ADGUARD_PORT
 users:
   - name: $ADMIN_USER
     password: $PASSWORD_HASH
