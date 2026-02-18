@@ -34,13 +34,43 @@ info "Автоматическая настройка панели 3x-ui..."
 
 # 1. Логин для получения куки
 info "Авторизация в панели..."
-LOGIN_RES=$(curl -s -X POST "${PANEL_URL}/login" \
-     -c "$COOKIE_FILE" \
-     -d "username=${USERNAME}" \
-     -d "password=${PASSWORD}")
+
+attempt_login() {
+    local user=$1
+    local pass=$2
+    curl -s -X POST "${PANEL_URL}/login" \
+         -c "$COOKIE_FILE" \
+         -d "username=${user}" \
+         -d "password=${pass}"
+}
+
+LOGIN_RES=$(attempt_login "${USERNAME}" "${PASSWORD}")
 
 if [[ "$LOGIN_RES" != *"true"* ]]; then
-    err "Ошибка авторизации в панели. Проверьте логин/пароль в .env"
+    warn "Не удалось войти с учетными данными из .env. Пробую стандартные (admin/admin)..."
+    LOGIN_RES=$(attempt_login "admin" "admin")
+    
+    if [[ "$LOGIN_RES" == *"true"* ]]; then
+        log "Вход со стандартными данными выполнен."
+        info "Обновляю учетные данные панели на те, что указаны в .env..."
+        
+        # Обновляем логин и пароль через API или внутреннюю команду
+        # В 3x-ui это делается через POST /panel/setting/updateUser
+        UPDATE_RES=$(curl -s -X POST "${PANEL_URL}/panel/setting/updateUser" \
+             -b "$COOKIE_FILE" \
+             -d "oldUsername=admin" \
+             -d "oldPassword=admin" \
+             -d "newUsername=${USERNAME}" \
+             -d "newPassword=${PASSWORD}")
+        
+        if [[ "$UPDATE_RES" == *"true"* ]]; then
+            log "Данные успешно обновлены."
+        else
+            err "Не удалось обновить данные пользователя в панели: $UPDATE_RES"
+        fi
+    else
+        err "Ошибка авторизации. Не подошли ни данные из .env, ни стандартные admin/admin."
+    fi
 fi
 log "Успешная авторизация"
 

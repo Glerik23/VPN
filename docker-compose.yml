@@ -16,6 +16,8 @@ services:
       - 3xui-db:/etc/x-ui/
       - 3xui-cert:/root/cert/
     tty: true
+    depends_on:
+      - warp
     logging:
       driver: json-file
       options:
@@ -45,6 +47,40 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # =============================================
+  # Cloudflare Warp — Приватный IP для Xray
+  # =============================================
+  warp:
+    image: caomingjun/warp-reg:latest
+    container_name: vpn-warp
+    restart: unless-stopped
+    environment:
+      - WARP_LICENSE_KEY=${WARP_LICENSE_KEY:-} # Можно добавить ключ Warp+
+    volumes:
+      - warp-conf:/var/lib/warp
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "1"
+
+  # =============================================
+  # AdGuard Home — Блокировка рекламы
+  # =============================================
+  adguard:
+    image: adguard/adguardhome
+    container_name: adguard
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./adguard/work:/opt/adguardhome/work
+      - ./adguard/conf:/opt/adguardhome/conf
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   3xui-db:
     name: 3xui-db
@@ -52,3 +88,5 @@ volumes:
     name: 3xui-cert
   hysteria2-cert:
     name: hysteria2-cert
+  warp-conf:
+    name: warp-conf
