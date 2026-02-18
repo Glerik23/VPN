@@ -78,17 +78,11 @@ log "Успешная авторизация"
 info "Проверка существующих подключений..."
 LIST_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/inbounds/list" -b "$COOKIE_FILE")
 
-# Отладочный вывод (можно закомментировать после фикса)
-echo "DEBUG: API Response for list: $LIST_RES"
-
-# Ищем порт 443 максимально надежно (и как число, и как строку)
-if echo "$LIST_RES" | grep -qiE "\"port\":[[:space:]]*\"?443\"?"; then
-    warn "Подключение на порту 443 уже существует. Пропускаю создание."
-    exit 0
-fi
+# Извлекаем ID существующего инбаунда на порту 443
+EXISTING_ID=$(echo "$LIST_RES" | grep -Po '"id":\s*\d+(?=,"up":.*,"port":443)' | head -n 1 | grep -Po '\d+') || EXISTING_ID=""
 
 # 3. Подготовка JSON для VLESS + Reality
-info "Создание нового подключения (VLESS + Reality)..."
+info "Подготовка параметров подключения (VLESS + Reality)..."
 
 INBOUND_JSON=$(cat <<EOF
 {
@@ -108,24 +102,25 @@ INBOUND_JSON=$(cat <<EOF
 EOF
 )
 
-# 4. Отправка запроса на создание
-ADD_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/inbounds/add" \
+# 4. Создание или обновление
+if [[ -n "$EXISTING_ID" ]]; then
+    info "Обновление существующего подключения (ID: $EXISTING_ID)..."
+    ACTION_URL="${PANEL_URL}/panel/api/inbounds/update/${EXISTING_ID}"
+else
+    info "Создание нового подключения..."
+    ACTION_URL="${PANEL_URL}/panel/api/inbounds/add"
+fi
+
+RES=$(curl -s -X POST "$ACTION_URL" \
      -b "$COOKIE_FILE" \
      -H "Content-Type: application/json" \
      -d "$INBOUND_JSON")
 
-if [[ "$ADD_RES" == *"true"* ]]; then
-    log "VLESS + Reality успешно добавлен на порт 443!"
-    echo ""
-    echo "=========================================="
-    echo -e "${GREEN}  ПАНЕЛЬ НАСТРОЕНА АВТОМАТИЧЕСКИ! ${NC}"
-    echo "=========================================="
-    echo ""
-elif [[ "$ADD_RES" == *"Port already exists"* ]]; then
-    warn "Подключение на порту 443 уже существует. Пропускаю."
+if [[ "$RES" == *"true"* ]]; then
+    log "Настройки успешно применены!"
 else
-    echo "DEBUG: API Response for add: $ADD_RES"
-    err "Не удалось создать inbound через API."
+    echo "DEBUG: API Response: $RES"
+    err "Не удалось применить настройки инбаунда."
 fi
 
 rm -f "$COOKIE_FILE"

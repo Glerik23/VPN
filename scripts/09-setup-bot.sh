@@ -29,4 +29,5 @@ EOF
 
 systemctl daemon-reload
 systemctl enable vpn-bot
+systemctl restart vpn-bot
 log "Сервис бота создан и добавлен в автозагрузку."

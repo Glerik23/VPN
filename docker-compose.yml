@@ -54,6 +54,8 @@ services:
     restart: unless-stopped
     environment:
       - WARP_LICENSE_KEY=${WARP_LICENSE_KEY:-} # Можно добавить ключ Warp+
+    cap_add:
+      - NET_ADMIN
     volumes:
       - warp-conf:/var/lib/warp
     logging:
