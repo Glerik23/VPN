@@ -43,8 +43,11 @@ echo "=========================================="
 echo ""
 
 # =============================================
-# 1. Обновление системы
+# 1. Настройка DNS и обновление системы
 # =============================================
+info "Настройка Google DNS..."
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
 info "Обновление системных пакетов..."
 apt update && apt upgrade -y
 log "Система обновлена"
@@ -83,6 +86,7 @@ cat > /etc/ssh/sshd_config.d/99-hardened.conf << EOF
 Port ${SSH_PORT}
 PermitRootLogin yes
 PasswordAuthentication yes
+KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
 MaxAuthTries 3
 ClientAliveInterval 300
@@ -90,6 +94,11 @@ ClientAliveCountMax 2
 X11Forwarding no
 AllowTcpForwarding no
 EOF
+
+# Проверка, что основной конфиг включает директорию .d
+if ! grep -q "^Include /etc/ssh/sshd_config.d/\*.conf" /etc/ssh/sshd_config; then
+    echo "Include /etc/ssh/sshd_config.d/*.conf" >> /etc/ssh/sshd_config
+fi
 
 # Перезапуск SSH
 systemctl restart sshd

@@ -9,6 +9,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 log()  { echo -e "${GREEN}[✓]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${CYAN}[i]${NC} $1"; }
 
@@ -52,29 +53,53 @@ log "Xray готов"
 # 3. Генерация ключей
 info "=== Генерация ключей ==="
 
-# Шаг 3.1: Генерируем случайную пару
-RAW_KEYS=$(/tmp/xray x25519 2>&1)
+# Шаг 3.1: Генерация ключей (используем openssl для надежности)
+if command -v openssl >/dev/null 2>&1; then
+    # Проверяем поддержку X25519 в OpenSSL
+    if openssl list -public-key-algorithms 2>/dev/null | grep -iq "X25519"; then
+        info "Генерация ключей через OpenSSL..."
+        REALITY_PRIVATE_KEY=$(openssl genpkey -algorithm X25519 -outform DER 2>/dev/null | tail -c 32 | base64 | tr -d '\r\n ')
+        if [ -n "$REALITY_PRIVATE_KEY" ]; then
+            REALITY_PUBLIC_KEY=$(echo "$REALITY_PRIVATE_KEY" | base64 -d | openssl pkey -inform DER -pubout -outform DER 2>/dev/null | tail -c 32 | base64 | tr -d '\r\n ')
+        fi
+    else
+        warn "OpenSSL на сервере не поддерживает X25519, используем Xray..."
+    fi
+fi
 
-# Шаг 3.2: Извлекаем Private Key
-REALITY_PRIVATE_KEY=$(echo "$RAW_KEYS" | grep -i "Private" | awk '{print $NF}' | tr -d '\r\n ')
+# Если OpenSSL не сработал или отсутствует, пробуем Xray
+if [ -z "$REALITY_PRIVATE_KEY" ] || [ -z "$REALITY_PUBLIC_KEY" ]; then
+    RAW_KEYS=$(/tmp/xray x25519 2>&1)
+    
+    # Ищем любой ряд, похожий на ключ (Base64 или URL-safe Base64), исключая мусор
+    # Reality ключи обычно 43-44 символа
+    KEYS_FOUND=$(echo "$RAW_KEYS" | grep -Ei "Private|Public|[a-zA-Z0-9+/=_-]{43,44}" | head -n 5)
+    
+    # Пробуем извлечь Private Key по метке или паттерну
+    REALITY_PRIVATE_KEY=$(echo "$KEYS_FOUND" | grep -i "Private" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+    [ -z "$REALITY_PRIVATE_KEY" ] && REALITY_PRIVATE_KEY=$(echo "$KEYS_FOUND" | grep -E "[a-zA-Z0-9+/=_-]{43,44}" | head -n 1 | tr -d '\r\n ')
+    
+    # Пробуем извлечь Public Key
+    REALITY_PUBLIC_KEY=$(echo "$KEYS_FOUND" | grep -i "Public" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+    
+    # Если Public Key не найден, пробуем сгенерировать его из Private через Xray
+    if [ -n "$REALITY_PRIVATE_KEY" ] && [ -z "$REALITY_PUBLIC_KEY" ]; then
+        info "Попытка генерации Public Key из Private Key..."
+        PUB_RAW=$(/tmp/xray x25519 -i "$REALITY_PRIVATE_KEY" 2>&1)
+        REALITY_PUBLIC_KEY=$(echo "$PUB_RAW" | grep -Ei "Public|[a-zA-Z0-9+/=_-]{43,44}" | grep -v "$REALITY_PRIVATE_KEY" | head -n 1 | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+        # Если awk не сработал (нет двоеточия), берем просто строку
+        [[ "$REALITY_PUBLIC_KEY" == *" "* ]] && REALITY_PUBLIC_KEY=$(echo "$REALITY_PUBLIC_KEY" | awk '{print $NF}')
+    fi
+fi
 
-if [ -z "$REALITY_PRIVATE_KEY" ]; then
-    echo "Ошибка: Xray вернул странный вывод:"
+if [ -z "$REALITY_PRIVATE_KEY" ] || [ -z "$REALITY_PUBLIC_KEY" ]; then
+    echo "--- ОТЛАДКА ---"
+    echo "Вывод Xray:"
     echo "$RAW_KEYS"
-    err "Не удалось получить Private Key"
+    err "Не удалось сгенерировать ключи. Проверьте вывод выше."
 fi
+
 echo "Private Key: [$REALITY_PRIVATE_KEY]"
-
-# Шаг 3.3: Генерируем Public Key из Private Key (самый надёжный метод)
-# Xray выведет и private и public, берем public
-PUB_RAW=$(/tmp/xray x25519 -i "$REALITY_PRIVATE_KEY" 2>&1)
-REALITY_PUBLIC_KEY=$(echo "$PUB_RAW" | grep -i "Public" | awk '{print $NF}' | tr -d '\r\n ')
-
-if [ -z "$REALITY_PUBLIC_KEY" ]; then
-    echo "Ошибка генерации Public Key. Вывод:"
-    echo "$PUB_RAW"
-    err "Не удалось получить Public Key"
-fi
 echo "Public Key:  [$REALITY_PUBLIC_KEY]"
 
 # UUID, ShortID, Password
