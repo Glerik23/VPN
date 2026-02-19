@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # 08-setup-inbound.sh — Автоматическая настройка 3x-ui через API
-# Создает VLESS + Reality inbound на порту 443 используя данные из .env
+# Синхронизирует VLESS + Reality inbound из .env в панель
 # =============================================================================
 set -euo pipefail
 
@@ -24,71 +24,77 @@ DOTENV="$PROJECT_DIR/.env"
 [[ ! -f "$DOTENV" ]] && err "Файл .env не найден"
 source "$DOTENV"
 
-# Параметры API
 PANEL_URL="http://localhost:${XUI_PORT:-2053}"
 USERNAME="${XUI_USERNAME:-admin}"
 PASSWORD="${XUI_PASSWORD}"
 COOKIE_FILE="/tmp/3xui_cookie.txt"
 
-info "Автоматическая настройка панели 3x-ui..."
+info "Синхронизация настроек Reality с панелью 3x-ui..."
 
-# 1. Логин для получения куки
-info "Авторизация в панели..."
-
+# 1. Авторизация
+info "Авторизация..."
 attempt_login() {
-    local user=$1
-    local pass=$2
-    curl -s -X POST "${PANEL_URL}/login" \
-         -c "$COOKIE_FILE" \
-         -d "username=${user}" \
-         -d "password=${pass}"
+    curl -s -X POST "${PANEL_URL}/login" -c "$COOKIE_FILE" -d "username=$1" -d "password=$2"
 }
 
 LOGIN_RES=$(attempt_login "${USERNAME}" "${PASSWORD}")
-
 if [[ "$LOGIN_RES" != *"true"* ]]; then
-    warn "Не удалось войти с учетными данными из .env. Пробую стандартные (admin/admin)..."
+    warn "Данные из .env не подошли, пробую admin/admin..."
     LOGIN_RES=$(attempt_login "admin" "admin")
-    
     if [[ "$LOGIN_RES" == *"true"* ]]; then
-        log "Вход со стандартными данными выполнен."
-        info "Обновляю учетные данные панели на те, что указаны в .env..."
-        
-        # Обновляем логин и пароль через API или внутреннюю команду
-        # В 3x-ui это делается через POST /panel/setting/updateUser
-        UPDATE_RES=$(curl -s -X POST "${PANEL_URL}/panel/setting/updateUser" \
-             -b "$COOKIE_FILE" \
-             -d "oldUsername=admin" \
-             -d "oldPassword=admin" \
-             -d "newUsername=${USERNAME}" \
-             -d "newPassword=${PASSWORD}")
-        
-        if [[ "$UPDATE_RES" == *"true"* ]]; then
-            log "Данные успешно обновлены."
-        else
-            err "Не удалось обновить данные пользователя в панели: $UPDATE_RES"
-        fi
+        log "Вход со стандартными данными. Обновляю пользователя на данные из .env..."
+        curl -s -X POST "${PANEL_URL}/panel/setting/updateUser" -b "$COOKIE_FILE" \
+             -d "oldUsername=admin" -d "oldPassword=admin" \
+             -d "newUsername=${USERNAME}" -d "newPassword=${PASSWORD}" > /dev/null
     else
-        err "Ошибка авторизации. Не подошли ни данные из .env, ни стандартные admin/admin."
+        err "Ошибка авторизации в панели."
     fi
 fi
 log "Успешная авторизация"
 
-# 2. Проверка, существует ли уже такой Inbound (по порту 443)
-info "Проверка существующих подключений..."
+# 2. Поиск инбаунда
+info "Поиск существующего инбаунда на порту 443..."
 LIST_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/inbounds/list" -b "$COOKIE_FILE")
 
-# Извлекаем ID существующего инбаунда на порту 443
-EXISTING_ID=$(echo "$LIST_RES" | grep -Po '"id":\s*\d+(?=,"up":.*,"port":443)' | head -n 1 | grep -Po '\d+') || EXISTING_ID=""
+if [[ -z "$LIST_RES" || "$LIST_RES" == "null" ]]; then
+    warn "POST запрос списка инбаундов вернул пустоту. Пробую GET..."
+    LIST_RES=$(curl -s -X GET "${PANEL_URL}/panel/api/inbounds/list" -b "$COOKIE_FILE")
+fi
 
-# 3. Подготовка JSON для VLESS + Reality
-info "Подготовка параметров подключения (VLESS + Reality)..."
+if [[ -z "$LIST_RES" || "$LIST_RES" == "null" ]]; then
+    warn "Не удалось получить список инбаундов (пустой ответ)."
+    EXISTING_ID=""
+else
+    # Извлекаем ID с помощью Python
+    EXISTING_ID=$(echo "$LIST_RES" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if not data or not isinstance(data, dict):
+        sys.exit(0)
+    # 3x-ui обычно возвращает список в data['obj']
+    inbounds = data.get('obj', [])
+    if inbounds is None: inbounds = []
+    for obj in inbounds:
+        if obj.get('port') == 443:
+            print(obj.get('id'))
+            break
+except Exception as e:
+    sys.stderr.write(f'JSON Parsing Error: {e}\n')
+" 2>/dev/null || echo "")
+fi
 
+if [[ -n "$EXISTING_ID" ]]; then
+    log "Найден существующий инбаунд с ID: $EXISTING_ID"
+else
+    info "Существующий инбаунд на порту 443 не найден в списке API."
+fi
+
+# 3. Формирование JSON
+info "Подготовка конфигурации (VLESS + Reality)..."
 INBOUND_JSON=$(cat <<EOF
 {
-  "up": 0,
-  "down": 0,
-  "total": 0,
+  "up": 0, "down": 0, "total": 0,
   "remark": "VLESS-REALITY-AUTO",
   "enable": true,
   "expiryTime": 0,
@@ -102,25 +108,22 @@ INBOUND_JSON=$(cat <<EOF
 EOF
 )
 
-# 4. Создание или обновление
+# 4. Применение
 if [[ -n "$EXISTING_ID" ]]; then
-    info "Обновление существующего подключения (ID: $EXISTING_ID)..."
+    info "Обновление существующего инбаунда (ID: $EXISTING_ID)..."
     ACTION_URL="${PANEL_URL}/panel/api/inbounds/update/${EXISTING_ID}"
 else
-    info "Создание нового подключения..."
+    info "Создание нового инбаунда..."
     ACTION_URL="${PANEL_URL}/panel/api/inbounds/add"
 fi
 
-RES=$(curl -s -X POST "$ACTION_URL" \
-     -b "$COOKIE_FILE" \
-     -H "Content-Type: application/json" \
-     -d "$INBOUND_JSON")
+RES=$(curl -s -X POST "$ACTION_URL" -b "$COOKIE_FILE" -H "Content-Type: application/json" -d "$INBOUND_JSON")
 
 if [[ "$RES" == *"true"* ]]; then
-    log "Настройки успешно применены!"
+    log "Настройки Reality успешно синхронизированы!"
 else
     echo "DEBUG: API Response: $RES"
-    err "Не удалось применить настройки инбаунда."
+    err "Не удалось применить настройки."
 fi
 
 rm -f "$COOKIE_FILE"

@@ -43,23 +43,28 @@ def handle_show_links(message):
         # Выполняем скрипт для получения текста
         res = subprocess.check_output(['/root/vpn/scripts/05-show-clients.sh'], stderr=subprocess.STDOUT).decode()
         
+        # Очищаем от ANSI-кодов
         import re
-        # Находим все ссылки vless:// и hysteria2://
-        links = re.findall(r'(vless://[^\s\x1b]+|hysteria2://[^\s\x1b]+)', res)
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        clean_res = ansi_escape.sub('', res)
         
-        if not links:
+        # Находим уникальные ссылки (dict.fromkeys сохраняет порядок)
+        vless_links = list(dict.fromkeys(re.findall(r'(vless://[^\s]+)', clean_res)))
+        hysteria_links = list(dict.fromkeys(re.findall(r'(hysteria2://[^\s]+)', clean_res)))
+        
+        all_links = []
+        for l in vless_links: all_links.append((l, "VLESS + REALITY"))
+        for l in hysteria_links: all_links.append((l, "Hysteria 2"))
+        
+        if not all_links:
             bot.send_message(message.chat.id, "❌ Ссылки не найдены. Сначала запустите скрипты настройки.")
             return
 
-        for i, link in enumerate(links):
-            # Название для файла
+        for i, (link, label) in enumerate(all_links):
             qr_path = f"/tmp/qr_{i}.png"
-            # Генерация QR через qrencode
             try:
+                # Генерация QR
                 subprocess.run(['qrencode', '-o', qr_path, '-s', '10', link], check=True)
-                
-                # Определяем тип для подписи
-                label = "VLESS + REALITY" if "vless" in link else "Hysteria 2"
                 
                 with open(qr_path, 'rb') as photo:
                     bot.send_photo(
@@ -68,12 +73,10 @@ def handle_show_links(message):
                         caption=f"🚀 <b>{label}</b>\n\n<code>{link}</code>", 
                         parse_mode='HTML'
                     )
-                # Удаляем временный файл
                 if os.path.exists(qr_path):
                     os.remove(qr_path)
             except Exception as qr_err:
-                print(f"QR Error: {qr_err}")
-                bot.send_message(message.chat.id, f"🔗 <code>{link}</code>", parse_mode='HTML')
+                bot.send_message(message.chat.id, f"🔗 <b>{label}</b>:\n<code>{link}</code>", parse_mode='HTML')
 
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Ошибка: {e}")
