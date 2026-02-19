@@ -71,7 +71,7 @@ log "Docker установлен."
 
 # 5. Деплой контейнеров
 info "Шаг 3/5: Запуск контейнеров (VPN, Warp, AdGuard)..."
-./scripts/03-deploy.sh
+./scripts/03-deploy.sh --no-prompt
 log "Контейнеры запущены."
 
 # 6. Настройка Telegram Бота (если есть токен)

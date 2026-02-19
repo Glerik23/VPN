@@ -29,29 +29,41 @@ source "$PROJECT_DIR/.env"
 [[ -z "${VLESS_UUID:-}" ]] && err "VLESS_UUID не задан. Запусти 04-generate-keys.sh"
 [[ -z "${HYSTERIA_PASSWORD:-}" ]] && err "HYSTERIA_PASSWORD не задан. Запусти 04-generate-keys.sh"
 
-echo ""
-echo "=========================================="
-echo "  Ссылки для подключения клиентов"
-echo "=========================================="
+# Обработка аргументов
+LINKS_ONLY=false
+if [[ "${1:-}" == "--links-only" ]]; then
+    LINKS_ONLY=true
+fi
+
+if [[ "$LINKS_ONLY" == "false" ]]; then
+    echo ""
+    echo "=========================================="
+    echo "  Ссылки для подключения клиентов"
+    echo "=========================================="
+fi
 
 # =============================================
 # 1. Ссылка VLESS + REALITY
 # =============================================
 VLESS_LINK="vless://${VLESS_UUID}@${SERVER_IP}:${VLESS_PORT:-443}?type=tcp&security=reality&pbk=${REALITY_PUBLIC_KEY}&fp=chrome&sni=${REALITY_SNI:-www.microsoft.com}&sid=${REALITY_SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#VPN-VLESS-REALITY"
 
-echo ""
-echo -e "${BOLD}━━━ VLESS + REALITY (основной) ━━━${NC}"
-echo ""
-echo -e "${CYAN}${VLESS_LINK}${NC}"
-echo ""
-
-# QR-код
-if command -v qrencode &> /dev/null; then
-    echo "QR-код:"
-    qrencode -t ansiutf8 "$VLESS_LINK"
-    echo ""
+if [[ "$LINKS_ONLY" == "true" ]]; then
+    echo "$VLESS_LINK"
 else
-    warn "Установи qrencode для QR-кодов: apt install qrencode"
+    echo ""
+    echo -e "${BOLD}━━━ VLESS + REALITY (основной) ━━━${NC}"
+    echo ""
+    echo -e "${CYAN}${VLESS_LINK}${NC}"
+    echo ""
+
+    # QR-код
+    if command -v qrencode &> /dev/null; then
+        echo "QR-код:"
+        qrencode -t ansiutf8 "$VLESS_LINK"
+        echo ""
+    else
+        warn "Установи qrencode для QR-кодов: apt install qrencode"
+    fi
 fi
 
 # =============================================
@@ -59,59 +71,64 @@ fi
 # =============================================
 HYSTERIA_LINK="hysteria2://${HYSTERIA_PASSWORD}@${SERVER_IP}:${HYSTERIA_PORT:-443}?insecure=1&sni=bing.com#VPN-Hysteria2"
 
-echo -e "${BOLD}━━━ Hysteria 2 (резервный) ━━━${NC}"
-echo ""
-echo -e "${CYAN}${HYSTERIA_LINK}${NC}"
-echo ""
-
-# QR-код
-if command -v qrencode &> /dev/null; then
-    echo "QR-код:"
-    qrencode -t ansiutf8 "$HYSTERIA_LINK"
+if [[ "$LINKS_ONLY" == "true" ]]; then
+    echo "$HYSTERIA_LINK"
+else
+    echo -e "${BOLD}━━━ Hysteria 2 (резервный) ━━━${NC}"
     echo ""
+    echo -e "${CYAN}${HYSTERIA_LINK}${NC}"
+    echo ""
+
+    # QR-код
+    if command -v qrencode &> /dev/null; then
+        echo "QR-код:"
+        qrencode -t ansiutf8 "$HYSTERIA_LINK"
+        echo ""
+    fi
 fi
 
 # =============================================
 # 3. Рекомендуемые клиентские приложения
 # =============================================
-echo ""
-echo "=========================================="
-echo "  Рекомендуемые приложения"
-echo "=========================================="
-echo ""
-echo "  📱 iOS:"
-echo "     • Streisand (App Store) — VLESS + Hysteria2"
-echo "     • Shadowrocket (App Store, платный) — все протоколы"
-echo ""
-echo "  🤖 Android:"
-echo "     • v2rayNG (Google Play / GitHub) — VLESS"
-echo "     • NekoBox (GitHub) — VLESS + Hysteria2"
-echo "     • Hiddify (Google Play / GitHub) — все протоколы"
-echo ""
-echo "  🖥️  Windows:"
-echo "     • Hiddify Next (GitHub) — все протоколы"
-echo "     • Nekoray (GitHub) — VLESS + Hysteria2"
-echo "     • v2rayN (GitHub) — VLESS"
-echo ""
-echo "  🍎 macOS:"
-echo "     • Hiddify Next (GitHub) — все протоколы"
-echo "     • Streisand (App Store)"
-echo "     • FoXray (App Store)"
-echo ""
-echo "  🐧 Linux:"
-echo "     • Hiddify Next (GitHub)"
-echo "     • Nekoray (GitHub)"
-echo ""
-echo "  💡 Как подключиться:"
-echo "     1. Установи приложение"
-echo "     2. Скопируй ссылку выше или отсканируй QR-код"
-echo "     3. Добавь как новый профиль/сервер"
-echo "     4. Подключись!"
-echo ""
+if [[ "$LINKS_ONLY" == "false" ]]; then
+    echo ""
+    echo "=========================================="
+    echo "  Рекомендуемые приложения"
+    echo "=========================================="
+    echo ""
+    echo "  📱 iOS:"
+    echo "     • Streisand (App Store) — VLESS + Hysteria2"
+    echo "     • Shadowrocket (App Store, платный) — все протоколы"
+    echo ""
+    echo "  🤖 Android:"
+    echo "     • v2rayNG (Google Play / GitHub) — VLESS"
+    echo "     • NekoBox (GitHub) — VLESS + Hysteria2"
+    echo "     • Hiddify (Google Play / GitHub) — все протоколы"
+    echo ""
+    echo "  🖥️  Windows:"
+    echo "     • Hiddify Next (GitHub) — все протоколы"
+    echo "     • Nekoray (GitHub) — VLESS + Hysteria2"
+    echo "     • v2rayN (GitHub) — VLESS"
+    echo ""
+    echo "  🍎 macOS:"
+    echo "     • Hiddify Next (GitHub) — все протоколы"
+    echo "     • Streisand (App Store)"
+    echo "     • FoXray (App Store)"
+    echo ""
+    echo "  🐧 Linux:"
+    echo "     • Hiddify Next (GitHub)"
+    echo "     • Nekoray (GitHub)"
+    echo ""
+    echo "  💡 Как подключиться:"
+    echo "     1. Установи приложение"
+    echo "     2. Скопируй ссылку выше или отсканируй QR-код"
+    echo "     3. Добавь как новый профиль/сервер"
+    echo "     4. Подключись!"
+    echo ""
 
-# Сохранение ссылок в файл
-LINKS_FILE="$PROJECT_DIR/client-links.txt"
-cat > "$LINKS_FILE" << EOF
+    # Сохранение ссылок в файл
+    LINKS_FILE="$PROJECT_DIR/client-links.txt"
+    cat > "$LINKS_FILE" << EOF
 # Ссылки для VPN-клиентов
 # Сгенерировано: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 # ⚠️  НЕ публикуй этот файл!
@@ -123,6 +140,7 @@ ${VLESS_LINK}
 ${HYSTERIA_LINK}
 EOF
 
-log "Ссылки сохранены в client-links.txt"
-warn "⚠️  Добавь client-links.txt в .gitignore!"
-echo ""
+    log "Ссылки сохранены в client-links.txt"
+    warn "⚠️  Добавь client-links.txt в .gitignore!"
+    echo ""
+fi

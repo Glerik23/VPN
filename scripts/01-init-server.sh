@@ -56,8 +56,18 @@ echo ""
 # =============================================
 # 1. Настройка DNS и обновление системы
 # =============================================
-info "Настройка Google DNS..."
-echo "nameserver 8.8.8.8" > /etc/resolv.conf
+info "Настройка DNS..."
+if ! grep -q "8.8.8.8" /etc/resolv.conf; then
+    # Если файл не является симлинком на systemd-resolved, меняем его
+    if [[ ! -L /etc/resolv.conf ]]; then
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        log "Google DNS установлен"
+    else
+        warn "Конфигурация DNS управляется системой (симлинк). Пропускаю ручную правку /etc/resolv.conf"
+    fi
+else
+    log "DNS уже настроен"
+fi
 
 info "Обновление системных пакетов..."
 apt update && apt upgrade -y

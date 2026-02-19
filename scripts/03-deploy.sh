@@ -159,11 +159,22 @@ echo "  🔗 Hysteria2 работает на UDP :${HYSTERIA_PORT:-443}"
 echo ""
 echo "  Запусти ./05-show-clients.sh чтобы получить ссылки подключения"
 
+# Обработка аргументов
+SKIP_PROMPT=false
+if [[ "${1:-}" == "--no-prompt" ]]; then
+    SKIP_PROMPT=true
+fi
+
 # =============================================
 # 7. Автоматическая настройка Inbound (через API)
 # =============================================
 echo ""
-read -p "Хотите настроить Inbound в панели автоматически? (y/n): " AUTO_XUI
+if [[ "$SKIP_PROMPT" == "true" ]]; then
+    AUTO_XUI="y"
+else
+    read -p "Хотите настроить Inbound в панели автоматически? (y/n): " AUTO_XUI
+fi
+
 if [[ "$AUTO_XUI" =~ ^[Yy]$ ]]; then
     chmod +x "$SCRIPT_DIR/08-setup-inbound.sh"
     bash "$SCRIPT_DIR/08-setup-inbound.sh"

@@ -5,8 +5,11 @@ from telebot import types
 import psutil
 from dotenv import load_dotenv
 
-# Загрузка .env
-ENV_PATH = '/root/vpn/.env'
+# Определение путей относительно скрипта
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+ENV_PATH = os.path.join(PROJECT_DIR, '.env')
+
 load_dotenv(ENV_PATH)
 
 TOKEN = os.getenv('TG_BOT_TOKEN')
@@ -34,27 +37,28 @@ def get_main_keyboard():
     btn_restart = types.KeyboardButton('🔄 Рестарт VPN')
     btn_backup = types.KeyboardButton('💾 Бекап')
     btn_reset = types.KeyboardButton('♻️ Сбросить ключи')
-    markup.add(btn_status, btn_clients, btn_restart, btn_backup, btn_reset)
+    btn_port = types.KeyboardButton('⚙️ Изменить порт')
+    markup.add(btn_status, btn_clients, btn_restart, btn_backup, btn_reset, btn_port)
     return markup
 
 def handle_show_links(message):
     bot.send_message(message.chat.id, "⏳ Генерирую ссылки и QR-коды...")
     try:
-        # Выполняем скрипт для получения текста
-        res = subprocess.check_output(['/root/vpn/scripts/05-show-clients.sh'], stderr=subprocess.STDOUT).decode()
+        # Выполняем скрипт с новым флагом --links-only
+        res = subprocess.check_output(
+            [os.path.join(PROJECT_DIR, 'scripts', '05-show-clients.sh'), '--links-only'], 
+            stderr=subprocess.STDOUT
+        ).decode()
         
-        # Очищаем от ANSI-кодов
-        import re
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        clean_res = ansi_escape.sub('', res)
-        
-        # Находим уникальные ссылки (dict.fromkeys сохраняет порядок)
-        vless_links = list(dict.fromkeys(re.findall(r'(vless://[^\s]+)', clean_res)))
-        hysteria_links = list(dict.fromkeys(re.findall(r'(hysteria2://[^\s]+)', clean_res)))
+        # Разделяем по строкам и фильтруем пустые
+        links = [l.strip() for l in res.split('\n') if l.strip()]
         
         all_links = []
-        for l in vless_links: all_links.append((l, "VLESS + REALITY"))
-        for l in hysteria_links: all_links.append((l, "Hysteria 2"))
+        for l in links:
+            if l.startswith('vless://'):
+                all_links.append((l, "VLESS + REALITY"))
+            elif l.startswith('hysteria2://'):
+                all_links.append((l, "Hysteria 2"))
         
         if not all_links:
             bot.send_message(message.chat.id, "❌ Ссылки не найдены. Сначала запустите скрипты настройки.")
@@ -111,16 +115,20 @@ def handle_message(message):
         bot.send_message(message.chat.id, "⚠️ <b>Внимание!</b> Все старые ссылки перестанут работать.\n⏳ Начинаю ротацию ключей...", parse_mode='HTML')
         try:
             # 1. Генерируем новые ключи в .env
-            subprocess.run(['/root/vpn/scripts/04-generate-keys.sh'], check=True)
+            subprocess.run([os.path.join(PROJECT_DIR, 'scripts', '04-generate-keys.sh')], check=True)
             # 2. Обновляем панель 3x-ui
-            subprocess.run(['/root/vpn/scripts/08-setup-inbound.sh'], check=True)
+            subprocess.run([os.path.join(PROJECT_DIR, 'scripts', '08-setup-inbound.sh')], check=True)
             # 3. Перезапускаем контейнеры
-            subprocess.run(['docker', 'compose', '-f', '/root/vpn/docker-compose.yml', 'restart'], check=True)
+            subprocess.run(['docker', 'compose', '-f', os.path.join(PROJECT_DIR, 'docker-compose.yml'), 'restart'], check=True)
             
             bot.send_message(message.chat.id, "✅ Ключи успешно сброшены! Вот ваши новые ссылки:")
             handle_show_links(message)
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Ошибка при сбросе: {e}")
+
+    elif message.text == '⚙️ Изменить порт':
+        msg = bot.send_message(message.chat.id, "🔢 Введите новый UDP порт для Hysteria 2 (например, 39421):")
+        bot.register_next_step_handler(msg, process_port_change)
 
     elif message.text == '💾 Бекап':
         bot.send_message(message.chat.id, "💾 Создаю бекап...")
@@ -129,14 +137,53 @@ def handle_message(message):
             with open(ENV_PATH, 'rb') as f:
                 bot.send_document(message.chat.id, f, caption="🔐 Файл .env")
             
-            db_path = "/var/lib/docker/volumes/3xui-db/_data/x-ui.db"
-            if os.path.exists(db_path):
-                with open(db_path, 'rb') as f:
-                    bot.send_document(message.chat.id, f, caption="📦 База данных x-ui.db")
-            else:
-                bot.send_message(message.chat.id, "⚠️ Файл БД не найден по стандартному пути.")
+            # Попытка найти базу данных через docker inspect
+            try:
+                volume_info = subprocess.check_output(['docker', 'volume', 'inspect', '3xui-db']).decode()
+                import json
+                volume_data = json.loads(volume_info)
+                mount_point = volume_data[0]['Mountpoint']
+                db_path = os.path.join(mount_point, 'x-ui.db')
+                
+                if os.path.exists(db_path):
+                    with open(db_path, 'rb') as f:
+                        bot.send_document(message.chat.id, f, caption="📦 База данных x-ui.db")
+                else:
+                    # Если прямой доступ к /var/lib/docker закрыт, пробуем через docker cp
+                    bot.send_message(message.chat.id, "⏳ Копирую БД из контейнера...")
+                    subprocess.run(['docker', 'cp', '3x-ui:/etc/x-ui/x-ui.db', '/tmp/x-ui.db'], check=True)
+                    with open('/tmp/x-ui.db', 'rb') as f:
+                        bot.send_document(message.chat.id, f, caption="📦 База данных x-ui.db (из контейнера)")
+                    os.remove('/tmp/x-ui.db')
+            except Exception as db_err:
+                bot.send_message(message.chat.id, f"⚠️ Не удалось получить БД: {db_err}")
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Ошибка бекапа: {e}")
+
+def process_port_change(message):
+    if not is_authorized(message): return
+    
+    new_port = message.text.strip()
+    if not new_port.isdigit() or not (1 <= int(new_port) <= 65535):
+        bot.send_message(message.chat.id, "❌ Ошибка: введите корректное число (1-65535)")
+        return
+    
+    bot.send_message(message.chat.id, f"⏳ Меняю порт на {new_port}...")
+    try:
+        # Вызываем скрипт с новым портом и ловим ошибки
+        result = subprocess.run(
+            [os.path.join(PROJECT_DIR, 'scripts', '11-change-port.sh'), new_port], 
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        bot.send_message(message.chat.id, f"✅ Порт изменен на {new_port}! Вот ваши новые ссылки:")
+        handle_show_links(message)
+    except subprocess.CalledProcessError as e:
+        error_msg = f"❌ Ошибка при смене порта:\n<code>{e.stderr}</code>"
+        bot.send_message(message.chat.id, error_msg, parse_mode='HTML')
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Непредвиденная ошибка: {e}")
 
 @bot.message_handler(func=lambda message: True)
 def handle_unauthorized(message):
