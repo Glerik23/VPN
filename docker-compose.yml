@@ -34,7 +34,7 @@ services:
       - "${HYSTERIA_PORT:-443}:443/udp"
     volumes:
       - ./hysteria2/config.yaml:/etc/hysteria/config.yaml:ro
-      - hysteria2-cert:/etc/hysteria/cert/
+      - ./hysteria2/cert:/etc/hysteria/cert/:ro
     cap_add:
       - NET_ADMIN
     sysctls:
