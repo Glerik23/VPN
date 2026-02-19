@@ -75,6 +75,7 @@ echo "Public Key:  [$REALITY_PUBLIC_KEY]"
 VLESS_UUID=$(docker run --rm "$XRAY_IMAGE" /app/xray uuid 2>/dev/null | tr -d '\r\n ')
 REALITY_SHORT_ID=$(openssl rand -hex 4)
 HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+HYSTERIA_OBFS_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 
 # 4. Запись в .env
 info "Запись в .env..."
@@ -98,6 +99,7 @@ set_env "REALITY_PUBLIC_KEY" "$REALITY_PUBLIC_KEY"
 set_env "REALITY_SHORT_ID" "$REALITY_SHORT_ID"
 set_env "VLESS_UUID" "$VLESS_UUID"
 set_env "HYSTERIA_PASSWORD" "$HYSTERIA_PASSWORD"
+set_env "HYSTERIA_OBFS_PASSWORD" "$HYSTERIA_OBFS_PASSWORD"
 
 # Очистка
 rm -f /tmp/xray /tmp/xray.zip

@@ -13,6 +13,9 @@ services:
     volumes:
       - 3xui-db:/etc/x-ui/
       - 3xui-cert:/root/cert/
+      - ./logs/3x-ui:/etc/x-ui/access.log  # Mount logs for Fail2Ban (if panel supports file logging)
+    # 3x-ui doesn't always log to file by default, but we can mount the directory
+    # For now, let's assume we want to mount the directory where logs reside
     tty: true
     depends_on:
       - warp
@@ -58,6 +61,8 @@ services:
       - NET_ADMIN
     volumes:
       - warp-conf:/var/lib/warp
+    ports:
+      - "127.0.0.1:1080:1080" # Local SOCKS5 proxy for Xray
     logging:
       driver: json-file
       options:

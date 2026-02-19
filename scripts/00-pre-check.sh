@@ -58,6 +58,25 @@ for VAR in "${!CHECKS[@]}"; do
     fi
 done
 
+# Проверка занятости критических портов
+info "Проверка сетевых портов..."
+for PORT in 80 443; do
+    if netstat -tuln 2>/dev/null | grep -q ":$PORT "; then
+        # Проверяем, не Docker ли это уже
+        if ! ss -lnpt | grep ":$PORT " | grep -q "docker"; then
+            warn "Порт $PORT уже занят другим процессом! Это может помешать установке."
+            FAILED=1
+        fi
+    fi
+done
+
+# Проверка версии ядра для BBR
+info "Проверка совместимости BBR..."
+KERNEL_VER=$(uname -r | cut -d. -f1,2)
+if (( $(echo "$KERNEL_VER < 4.9" | bc -l) )); then
+    warn "Версия ядра ($KERNEL_VER) слишком старая для BBR. Оптимизация сети будет ограничена."
+fi
+
 # Проверка на слабые пароли (опционально, но важно)
 for VAR in "${!DEFAULTS[@]}"; do
     VAL="${!VAR:-}"

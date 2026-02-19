@@ -62,7 +62,7 @@ log "Проверка зависимостей пройдена"
 # =============================================
 # 2. Генерация ключей (если не заданы)
 # =============================================
-if [[ -z "${REALITY_PRIVATE_KEY:-}" || -z "${VLESS_UUID:-}" || -z "${HYSTERIA_PASSWORD:-}" ]]; then
+if [[ -z "${REALITY_PRIVATE_KEY:-}" || -z "${VLESS_UUID:-}" || -z "${HYSTERIA_PASSWORD:-}" || -z "${HYSTERIA_OBFS_PASSWORD:-}" ]]; then
     info "Ключи не найдены в .env, генерируем..."
     bash "$SCRIPT_DIR/04-generate-keys.sh"
     # Перезагрузка .env после генерации
@@ -91,6 +91,8 @@ fi
 sed -i "s|__HYSTERIA_PASSWORD__|${HYSTERIA_PASSWORD}|g" "${HYSTERIA_CONFIG}.tmp"
 sed -i "s|__HYSTERIA_UP__|${HYSTERIA_UP_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
 sed -i "s|__HYSTERIA_DOWN__|${HYSTERIA_DOWN_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
+sed -i "s|__HYSTERIA_MASQUERADE__|https://${REALITY_SNI:-www.microsoft.com}|g" "${HYSTERIA_CONFIG}.tmp"
+sed -i "s|__HYSTERIA_OBFS_PASSWORD__|${HYSTERIA_OBFS_PASSWORD:-}|g" "${HYSTERIA_CONFIG}.tmp"
 
 mv "${HYSTERIA_CONFIG}.tmp" "$HYSTERIA_CONFIG"
 log "Конфиг Hysteria2 подготовлен"
@@ -105,7 +107,7 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
     openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
         -keyout "$CERT_DIR/server.key" \
         -out "$CERT_DIR/server.crt" \
-        -subj "/CN=bing.com" \
+        -subj "/CN=${REALITY_SNI:-www.microsoft.com}" \
         -days 3650
     log "TLS-сертификат Hysteria2 сгенерирован"
 else

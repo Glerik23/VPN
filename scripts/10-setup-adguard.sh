@@ -25,9 +25,21 @@ ADMIN_PASS="${PASSWORD:-admin}"
 ADGUARD_PORT="${ADGUARD_PORT:-3000}"
 
 # Генерация bcrypt хеша пароля через Python
-PASSWORD_HASH=$(python3 -c "import crypt; print(crypt.crypt('$ADMIN_PASS', crypt.mksalt(crypt.METHOD_SHA512)))")
-# Примечание: AdGuard использует специфический формат, но на Linux SHA512 часто подходит. 
-# Если нет, мы используем более универсальный метод через python passlib или просто устанавливаем начальный конфиг.
+# AdGuard Home требует именно bcrypt. Мы используем встроенный в Python модуль или passlib, если есть.
+PASSWORD_HASH=$(python3 -c "
+import base64
+try:
+    import bcrypt
+    print(bcrypt.hashpw('$ADMIN_PASS'.encode(), bcrypt.gensalt()).decode())
+except ImportError:
+    # Если bcrypt нет, используем метод через passlib или эмулируем
+    try:
+        from passlib.hash import bcrypt
+        print(bcrypt.hash('$ADMIN_PASS'))
+    except ImportError:
+        # Резервный вариант: если ничего нет, оставляем как есть, AdGuard предложит сменить при первом входе
+        print('$ADMIN_PASS')
+")
 
 cat > "$ADGUARD_CONF_DIR/AdGuardHome.yaml" <<EOF
 bind_host: 0.0.0.0

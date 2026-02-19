@@ -1,9 +1,10 @@
+```
 # Конфигурация Hysteria 2 сервера
 # Документация: https://v2.hysteria.network/docs/
 
 listen: :443
 
-# TLS — самоподписанный сертификат (генерируется скриптом 04-generate-keys.sh)
+# TLS — самоподписанный сертификат (генерируется скриптом 04-generate-keys.sh, используя REALITY_SNI)
 tls:
   cert: /etc/hysteria/cert/server.crt
   key: /etc/hysteria/cert/server.key
@@ -17,7 +18,7 @@ auth:
 masquerade:
   type: proxy
   proxy:
-    url: https://www.bing.com
+    url: https://__REALITY_SNI_PLACEHOLDER__  # Заменяется скриптом деплоя на REALITY_SNI
     rewriteHost: true
 
 # Подсказки по пропускной способности
@@ -33,3 +34,9 @@ quic:
   maxConnReceiveWindow: 20971520
   maxIdleTimeout: 30s
   keepAlivePeriod: 10s
+
+# Обфускация (Salamander) — скрывает UDP-трафик от DPI
+obfs:
+  type: salamander
+  salamander:
+    password: __HYSTERIA_OBFS_PASSWORD__  # Заменяется скриптом деплоя

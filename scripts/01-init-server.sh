@@ -119,9 +119,12 @@ PermitRootLogin yes
 PasswordAuthentication ${SSH_PASSWORD_AUTH}
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
+PermitEmptyPasswords no
 MaxAuthTries 3
+LoginGraceTime 30
 ClientAliveInterval 300
 ClientAliveCountMax 2
+AllowUsers root
 X11Forwarding no
 AllowTcpForwarding no
 EOF
@@ -155,6 +158,9 @@ ufw allow "${XUI_PORT}/tcp" comment '3x-ui Panel'
 
 # VLESS + REALITY (TCP)
 ufw allow "${VLESS_PORT:-443}/tcp" comment 'VLESS REALITY'
+
+# Hysteria 2 (UDP)
+ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria 2'
 
 # Hysteria 2 (UDP)
 ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria2'

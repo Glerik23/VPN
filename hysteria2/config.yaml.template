@@ -17,7 +17,7 @@ auth:
 masquerade:
   type: proxy
   proxy:
-    url: https://www.bing.com
+    url: https://__REALITY_SNI_PLACEHOLDER__
     rewriteHost: true
 
 # Подсказки по пропускной способности

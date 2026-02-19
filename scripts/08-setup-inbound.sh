@@ -126,4 +126,30 @@ else
     err "Не удалось применить настройки."
 fi
 
+# 5. Настройка Outbound для Warp (если нужен)
+# Проверяем, есть ли уже outbound с тегом "warp"
+info "Проверка конфигурации Outbound (Warp)..."
+OUTBOUNDS_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/outbounds/list" -b "$COOKIE_FILE")
+
+if [[ "$OUTBOUNDS_RES" == *"\"tag\": \"warp\""* ]]; then
+    log "Outbound 'warp' уже существует."
+else
+    info "Создание Outbound для Warp (SOCKS5 127.0.0.1:1080)..."
+    WARP_JSON=$(cat <<EOF
+{
+  "remark": "warp",
+  "protocol": "socks",
+  "tag": "warp",
+  "settings": "{\"servers\": [{\"address\": \"127.0.0.1\", \"port\": 1080}]}"
+}
+EOF
+)
+    WARP_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/outbounds/add" -b "$COOKIE_FILE" -H "Content-Type: application/json" -d "$WARP_JSON")
+    if [[ "$WARP_RES" == *"true"* ]]; then
+        log "Outbound Warp успешно добавлен!"
+    else
+        warn "Не удалось добавить Outbound Warp. Возможно, он уже есть или API отличается."
+    fi
+fi
+
 rm -f "$COOKIE_FILE"

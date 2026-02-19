@@ -28,6 +28,7 @@ source "$PROJECT_DIR/.env"
 [[ -z "${REALITY_PUBLIC_KEY:-}" ]] && err "REALITY_PUBLIC_KEY не задан. Запусти 04-generate-keys.sh"
 [[ -z "${VLESS_UUID:-}" ]] && err "VLESS_UUID не задан. Запусти 04-generate-keys.sh"
 [[ -z "${HYSTERIA_PASSWORD:-}" ]] && err "HYSTERIA_PASSWORD не задан. Запусти 04-generate-keys.sh"
+[[ -z "${HYSTERIA_OBFS_PASSWORD:-}" ]] && err "HYSTERIA_OBFS_PASSWORD не задан. Запусти 04-generate-keys.sh"
 
 # Обработка аргументов
 LINKS_ONLY=false
@@ -69,7 +70,7 @@ fi
 # =============================================
 # 2. Ссылка Hysteria2
 # =============================================
-HYSTERIA_LINK="hysteria2://${HYSTERIA_PASSWORD}@${SERVER_IP}:${HYSTERIA_PORT:-443}?insecure=1&sni=bing.com#VPN-Hysteria2"
+HYSTERIA_LINK="hysteria2://${HYSTERIA_PASSWORD}@${SERVER_IP}:${HYSTERIA_PORT:-443}?insecure=1&sni=${REALITY_SNI:-www.microsoft.com}&obfs=salamander&obfs-password=${HYSTERIA_OBFS_PASSWORD}#VPN-Hysteria2"
 
 if [[ "$LINKS_ONLY" == "true" ]]; then
     echo "$HYSTERIA_LINK"
