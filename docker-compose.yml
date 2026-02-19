@@ -4,7 +4,7 @@ services:
   # Веб-интерфейс + Xray-core в одном контейнере
   # =============================================
   3x-ui:
-    image: ghcr.io/mhsanaei/3x-ui:latest
+    image: ghcr.io/mhsanaei/3x-ui:v2.3.8
     container_name: 3x-ui
     restart: unless-stopped
     network_mode: host
@@ -68,7 +68,7 @@ services:
   # AdGuard Home — Блокировка рекламы
   # =============================================
   adguard:
-    image: adguard/adguardhome
+    image: adguard/adguardhome:v0.107.56
     container_name: adguard
     restart: unless-stopped
     network_mode: host

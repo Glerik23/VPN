@@ -18,6 +18,16 @@ warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${CYAN}[i]${NC} $1"; }
 
+# Обработка ошибок
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+    local command="$2"
+    echo -e "${RED}[✗] Ошибка в строке $line_number: команда '$command' завершилась с кодом $exit_code${NC}"
+    exit $exit_code
+}
+trap 'error_handler ${LINENO} "$BASH_COMMAND"' ERR
+
 # --- Предварительные проверки ---
 [[ $EUID -ne 0 ]] && err "Этот скрипт нужно запускать от root"
 
@@ -81,13 +91,23 @@ info "Настройка SSH на порту ${SSH_PORT}..."
 # Бэкап оригинального конфига
 cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 
+# Перевірка наявності SSH-ключів перед відключенням паролів
+if [[ ! -f /root/.ssh/authorized_keys ]] || [[ ! -s /root/.ssh/authorized_keys ]]; then
+    warn "⚠️  Файл /root/.ssh/authorized_keys порожній або відсутній!"
+    warn "⚠️  Відключення паролів ЗАБОРОНЕНО, щоб ви не втратили доступ."
+    SSH_PASSWORD_AUTH="yes"
+else
+    log "SSH-ключі виявлені. Парольна автентифікація буде вимкнена."
+    SSH_PASSWORD_AUTH="no"
+fi
+
 # Применение защищённого SSH-конфига
 cat > /etc/ssh/sshd_config.d/99-hardened.conf << EOF
 # --- Защищённая конфигурация SSH ---
 Port ${SSH_PORT}
 PermitRootLogin yes
-PasswordAuthentication yes
-KbdInteractiveAuthentication yes
+PasswordAuthentication ${SSH_PASSWORD_AUTH}
+KbdInteractiveAuthentication no
 PubkeyAuthentication yes
 MaxAuthTries 3
 ClientAliveInterval 300
@@ -103,7 +123,7 @@ fi
 
 # Перезапуск SSH
 systemctl restart sshd
-log "SSH настроен на порту ${SSH_PORT} (только ключи)"
+log "SSH настроен на порту ${SSH_PORT} (PasswordAuth: ${SSH_PASSWORD_AUTH})"
 
 warn "⚠️  ВАЖНО: Убедись, что SSH-ключи настроены, прежде чем отключаться!"
 warn "⚠️  Проверь в НОВОМ терминале: ssh -p ${SSH_PORT} root@${SERVER_IP}"

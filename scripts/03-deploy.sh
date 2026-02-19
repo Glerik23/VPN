@@ -17,6 +17,16 @@ warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 info() { echo -e "${CYAN}[i]${NC} $1"; }
 
+# Обработка ошибок
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+    local command="$2"
+    echo -e "${RED}[✗] Ошибка в строке $line_number: команда '$command' завершилась с кодом $exit_code${NC}"
+    exit $exit_code
+}
+trap 'error_handler ${LINENO} "$BASH_COMMAND"' ERR
+
 [[ $EUID -ne 0 ]] && err "Этот скрипт нужно запускать от root"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,8 +79,13 @@ info "Подготовка конфигурации Hysteria2..."
 
 HYSTERIA_CONFIG="$PROJECT_DIR/hysteria2/config.yaml"
 
-# Создание рабочей копии из шаблона
-cp "$HYSTERIA_CONFIG" "${HYSTERIA_CONFIG}.tmp"
+# Створення робочої копії з шаблону (якщо він існує) або використання поточного як основи
+if [[ -f "${HYSTERIA_CONFIG}.template" ]]; then
+    cp "${HYSTERIA_CONFIG}.template" "${HYSTERIA_CONFIG}.tmp"
+else
+    # Якщо шаблону немає, створюємо його з поточного конфігу (для першого разу)
+    cp "$HYSTERIA_CONFIG" "${HYSTERIA_CONFIG}.tmp"
+fi
 
 # Замена плейсхолдеров
 sed -i "s|__HYSTERIA_PASSWORD__|${HYSTERIA_PASSWORD}|g" "${HYSTERIA_CONFIG}.tmp"
