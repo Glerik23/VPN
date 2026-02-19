@@ -53,29 +53,84 @@ fi
 XRAY_IMAGE="ghcr.io/mhsanaei/3x-ui:v2.3.8"
 
 # 3. Генерация ключей
-info "=== Генерация ключей (X25519) ==="
+info "=== Генерация ключей (VLESS + Reality + Hysteria) ==="
 
-# Генерация Private/Public Key через Docker (xray)
-# Вывод xray x25519 выглядит так:
-# Private key: ...
-# Public key: ...
-RAW_KEYS=$(docker run --rm "$XRAY_IMAGE" /app/xray x25519 2>/dev/null)
+# Функция для локальной генерации (без Docker)
+generate_locally() {
+    warn "Использую локальную генерацию (Docker недоступен или тормозит)..."
+    
+    # Создаем временные файлы
+    local PRIV_PEM="/tmp/reality_priv.pem"
+    local PUB_PEM="/tmp/reality_pub.pem"
+    
+    # Генерируем приватный ключ в формате PEM
+    if openssl genpkey -algorithm x25519 -out "$PRIV_PEM" 2>/dev/null; then
+        # Генерируем публичный ключ в формате PEM
+        openssl pkey -in "$PRIV_PEM" -pubout -out "$PUB_PEM" 2>/dev/null
+        
+        # Извлекаем сырые байты (raw bytes) и кодируем в base64
+        # В DER-формате x25519 ключи всегда в конце: 32 байта для приватного и 32 для публичного
+        REALITY_PRIVATE_KEY=$(openssl pkey -in "$PRIV_PEM" -outform DER | tail -c 32 | base64 | tr -d '\r\n')
+        REALITY_PUBLIC_KEY=$(openssl pkey -in "$PUB_PEM" -pubin -outform DER | tail -c 32 | base64 | tr -d '\r\n')
+        
+        rm -f "$PRIV_PEM" "$PUB_PEM"
+    else
+        err "Ваша система не поддерживает генерацию X25519. Попробуйте обновить openssl (apt update && apt install openssl)."
+    fi
+    
+    VLESS_UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || openssl rand -hex 16 | sed 's/\(........\)\(....\)\(....\)\(....\)\(............\)/\1-\2-\3-\4-\5/')
+    REALITY_SHORT_ID=$(openssl rand -hex 4)
+    HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+    HYSTERIA_OBFS_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+}
 
-REALITY_PRIVATE_KEY=$(echo "$RAW_KEYS" | grep -i "Private" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
-REALITY_PUBLIC_KEY=$(echo "$RAW_KEYS" | grep -i "Public" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+# Пробуем через Docker с таймаутом
+info "Проверка Docker и образа..."
+CAN_USE_DOCKER=false
 
-if [ -z "$REALITY_PRIVATE_KEY" ] || [ -z "$REALITY_PUBLIC_KEY" ]; then
-    err "Не удалось сгенерировать ключи через Docker. Убедитесь, что есть интернет для скачивания образа."
+# Проверяем, что docker вообще жив и может выполнить простую команду
+if command -v docker &> /dev/null && timeout 5s docker ps &>/dev/null; then
+    # Пробуем pull с таймаутом 30 секунд (только если образа нет)
+    if [[ "$(docker images -q "$XRAY_IMAGE" 2> /dev/null)" == "" ]]; then
+        info "Загрузка вспомогательного образа Docker..."
+        if timeout 60s docker pull "$XRAY_IMAGE" &>/dev/null; then
+            CAN_USE_DOCKER=true
+        fi
+    else
+        CAN_USE_DOCKER=true
+    fi
+fi
+
+if [ "$CAN_USE_DOCKER" = true ]; then
+    info "Генерация через Docker..."
+    # Добавляем таймаут 15сек на сам запуск контейнера
+    if RAW_KEYS=$(timeout 15s docker run --rm "$XRAY_IMAGE" /app/xray x25519 2>/dev/null); then
+        REALITY_PRIVATE_KEY=$(echo "$RAW_KEYS" | grep -i "Private" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+        REALITY_PUBLIC_KEY=$(echo "$RAW_KEYS" | grep -i "Public" | awk -F': ' '{print $NF}' | tr -d '\r\n ')
+        VLESS_UUID=$(timeout 15s docker run --rm "$XRAY_IMAGE" /app/xray uuid 2>/dev/null | tr -d '\r\n ' || echo "")
+        
+        # Если UUID не сгенерировался через докер, генерируем локально
+        if [ -z "$VLESS_UUID" ]; then
+            VLESS_UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || openssl rand -hex 16 | sed 's/\(........\)\(....\)\(....\)\(....\)\(............\)/\1-\2-\3-\4-\5/')
+        fi
+        
+        REALITY_SHORT_ID=$(openssl rand -hex 4)
+        HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+        HYSTERIA_OBFS_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+    else
+        warn "Docker завис при запуске контейнера. Использую локальную генерацию..."
+        generate_locally
+    fi
+else
+    generate_locally
+fi
+
+if [ -z "$REALITY_PRIVATE_KEY" ]; then
+    err "Не удалось сгенерировать ключи ни одним из способов."
 fi
 
 echo "Private Key: [СКРЫТО]"
 echo "Public Key:  [$REALITY_PUBLIC_KEY]"
-
-# UUID, ShortID, Password
-VLESS_UUID=$(docker run --rm "$XRAY_IMAGE" /app/xray uuid 2>/dev/null | tr -d '\r\n ')
-REALITY_SHORT_ID=$(openssl rand -hex 4)
-HYSTERIA_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
-HYSTERIA_OBFS_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 
 # 4. Запись в .env
 info "Запись в .env..."

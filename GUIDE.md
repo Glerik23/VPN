@@ -6,10 +6,10 @@
 Арендуйте любой VPS за рубежом (Ubuntu 22.04/24.04). Получите IP и пароль root.
 
 ## Этап 2: Установка (одна команда)
-1. Подключитесь по SSH и загрузите файлы проекта в `/root/vpn/`.
+1. Подключитесь по SSH и загрузите файлы проекта в `/root/VPN/`.
 2. Выполните:
 ```bash
-cd /root/vpn && chmod +x master_setup.sh && ./master_setup.sh
+cd /root/VPN && chmod +x master_setup.sh && ./master_setup.sh
 ```
 
 ## Этап 3: Настройка клиента
@@ -34,7 +34,7 @@ cd /root/vpn && chmod +x master_setup.sh && ./master_setup.sh
 - Выполните `docker restart hysteria2 3x-ui`.
 
 ### 4. Нужен бэкап или перенос
-- Запустите `./scripts/06-backup.sh`. Архив будет в `/root/vpn-backups/`.
+- Запустите `./scripts/06-backup.sh`. Архив будет в `/root/VPN-backups/`.
 
 ### 5. Ошибка "No space left on device"
 - Docker накопил мусор. Выполните: `docker system prune -a`.

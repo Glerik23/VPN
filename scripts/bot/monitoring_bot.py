@@ -106,7 +106,7 @@ def handle_message(message):
     elif message.text == '🔄 Рестарт VPN':
         bot.send_message(message.chat.id, "🔄 Перезапускаю контейнеры...")
         try:
-            subprocess.run(['docker', 'compose', '-f', '/root/vpn/docker-compose.yml', 'restart'], check=True)
+            subprocess.run(['docker', 'compose', '-f', '/root/VPN/docker-compose.yml', 'restart'], check=True)
             bot.send_message(message.chat.id, "✅ Контейнеры перезапущены!")
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Ошибка рестарта: {e}")

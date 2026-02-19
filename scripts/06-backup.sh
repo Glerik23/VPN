@@ -24,9 +24,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 source "$PROJECT_DIR/.env" 2>/dev/null || true
 
-BACKUP_DIR="${BACKUP_DIR:-/root/vpn-backups}"
+BACKUP_DIR="${BACKUP_DIR:-/root/VPN-backups}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_NAME="vpn-backup-${TIMESTAMP}"
+BACKUP_NAME="VPN-backup-${TIMESTAMP}"
 BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
 
 echo ""
@@ -114,7 +114,7 @@ echo "  📏 Размер: ${ARCHIVE_SIZE}"
 echo ""
 echo "  Для восстановления:"
 echo "    tar -xzf ${BACKUP_NAME}.tar.gz"
-echo "    cp .env /path/to/vpn-project/"
+echo "    cp .env /path/to/VPN-project/"
 echo "    docker compose up -d"
 echo ""
 

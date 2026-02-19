@@ -3,18 +3,18 @@
 Готовый к продакшену VPN-сервер с **VLESS + REALITY** и **Hysteria 2**.
 Оптимизирован для обхода DPI (ТСПУ) и блокировок.
 
-##  Быстрый старт
+## Быстрый старт
 
 ### 1. Подготовка (на твоём компьютере)
 ```bash
 # Перенеси файлы на сервер
-scp -r ./* root@YOUR_SERVER_IP:/root/vpn/
+scp -r ./* root@YOUR_SERVER_IP:/root/VPN/
 ```
 
 ### 2. На сервере
 ```bash
 ssh root@YOUR_SERVER_IP
-cd /root/vpn
+cd /root/VPN
 
 # Сделай скрипт исполняемым и запусти установку
 chmod +x master_setup.sh

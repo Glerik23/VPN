@@ -17,7 +17,7 @@ info() { echo -e "${CYAN}[i]${NC} $1"; }
 
 [[ $EUID -ne 0 ]] && err "Этот скрипт нужно запускать от root"
 
-BACKUP_DIR="/root/vpn-backups"
+BACKUP_DIR="/root/VPN-backups"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "=========================================="
@@ -48,11 +48,11 @@ fi
 [[ ! -f "$SELECTED_FILE" ]] && err "Файл не найден"
 
 info "Восстановление из $(basename "$SELECTED_FILE")..."
-TEMP_RESTORE="/tmp/vpn-restore-$(date +%s)"
+TEMP_RESTORE="/tmp/VPN-restore-$(date +%s)"
 mkdir -p "$TEMP_RESTORE"
 tar -xzf "$SELECTED_FILE" -C "$TEMP_RESTORE"
 
-# Определяем имя папки внутри архива (обычно vpn-backup-YYYYMMDD_HHMMSS)
+# Определяем имя папки внутри архива (обычно VPN-backup-YYYYMMDD_HHMMSS)
 INNER_DIR=$(ls -1 "$TEMP_RESTORE" | head -n 1)
 RESTORE_SRC="$TEMP_RESTORE/$INNER_DIR"
 

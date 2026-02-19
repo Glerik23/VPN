@@ -127,11 +127,29 @@ else
 fi
 
 # 5. Настройка Outbound для Warp (если нужен)
-# Проверяем, есть ли уже outbound с тегом "warp"
 info "Проверка конфигурации Outbound (Warp)..."
 OUTBOUNDS_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/outbounds/list" -b "$COOKIE_FILE")
 
-if [[ "$OUTBOUNDS_RES" == *"\"tag\": \"warp\""* ]]; then
+if [[ -z "$OUTBOUNDS_RES" || "$OUTBOUNDS_RES" == "null" ]]; then
+    warn "POST запрос списка аутбаундов вернул пустоту. Пробую GET..."
+    OUTBOUNDS_RES=$(curl -s -X GET "${PANEL_URL}/panel/api/outbounds/list" -b "$COOKIE_FILE")
+fi
+
+WARP_EXISTS=$(echo "$OUTBOUNDS_RES" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    outbounds = data.get('obj', [])
+    if outbounds is None: outbounds = []
+    for obj in outbounds:
+        if obj.get('tag') == 'warp':
+            print('true')
+            sys.exit(0)
+except: pass
+print('false')
+" 2>/dev/null || echo "false")
+
+if [[ "$WARP_EXISTS" == "true" ]]; then
     log "Outbound 'warp' уже существует."
 else
     info "Создание Outbound для Warp (SOCKS5 127.0.0.1:1080)..."
@@ -148,7 +166,8 @@ EOF
     if [[ "$WARP_RES" == *"true"* ]]; then
         log "Outbound Warp успешно добавлен!"
     else
-        warn "Не удалось добавить Outbound Warp. Возможно, он уже есть или API отличается."
+        warn "Не удалось добавить Outbound Warp."
+        echo "DEBUG: API Outbound Response: $WARP_RES"
     fi
 fi
 

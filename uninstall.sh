@@ -40,8 +40,8 @@ elif docker compose version &> /dev/null; then
 else
     warn "Docker Compose не найден, пробую остановить контейнеры вручную..."
     # Остановка контейнеров по именам из docker-compose
-    docker stop 3x-ui hysteria2 vpn-warp adguard monitoring-bot 2>/dev/null || true
-    docker rm 3x-ui hysteria2 vpn-warp adguard monitoring-bot 2>/dev/null || true
+    docker stop 3x-ui hysteria2 VPN-Warp adguard monitoring-bot 2>/dev/null || true
+    docker rm 3x-ui hysteria2 VPN-Warp adguard monitoring-bot 2>/dev/null || true
 fi
 
 # 2. Принудительная очистка портов
