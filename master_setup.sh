@@ -16,6 +16,16 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
+# Обработка ошибок
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+    local command="$2"
+    echo -e "${RED}[✗] Ошибка в строке $line_number: команда '$command' завершилась с кодом $exit_code${NC}"
+    exit $exit_code
+}
+trap 'error_handler ${LINENO} "$BASH_COMMAND"' ERR
+
 # Проверка на root
 if [[ $EUID -ne 0 ]]; then
    err "Этот скрипт должен выполняться от имени root"
@@ -82,7 +92,7 @@ log "Панели настроены."
 
 echo -e "${GREEN}"
 echo "====================================================="
-echo "   ✨ ВСТАНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО! ✨"
+echo "   ✨ УСТАНОВКА ЗАВЕРШЕНА УСПЕШНО! ✨"
 echo "====================================================="
 echo -e "${NC}"
 info "Ваш VPN готов к работе."
