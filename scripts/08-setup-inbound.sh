@@ -25,6 +25,8 @@ DOTENV="$PROJECT_DIR/.env"
 source "$DOTENV"
 
 PANEL_URL="http://localhost:${XUI_PORT:-2053}"
+# Публичный URL для инструкций (из .env)
+PUBLIC_URL="http://${SERVER_IP:-ваш_ip}:${XUI_PORT:-2053}"
 USERNAME="${XUI_USERNAME:-admin}"
 PASSWORD="${XUI_PASSWORD}"
 COOKIE_FILE="/tmp/3xui_cookie.txt"
@@ -128,47 +130,39 @@ fi
 
 # 5. Настройка Outbound для Warp (если нужен)
 info "Проверка конфигурации Outbound (Warp)..."
-OUTBOUNDS_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/outbounds/list" -b "$COOKIE_FILE")
 
-if [[ -z "$OUTBOUNDS_RES" || "$OUTBOUNDS_RES" == "null" ]]; then
-    warn "POST запрос списка аутбаундов вернул пустоту. Пробую GET..."
-    OUTBOUNDS_RES=$(curl -s -X GET "${PANEL_URL}/panel/api/outbounds/list" -b "$COOKIE_FILE")
-fi
+# Для получения списка аутбаундов в MHSanaei используем getConfigJson
+CONFIG_JSON=$(curl -s -X GET "${PANEL_URL}/panel/api/server/getConfigJson" -b "$COOKIE_FILE")
 
-WARP_EXISTS=$(echo "$OUTBOUNDS_RES" | python3 -c "
+WARP_EXISTS=$(echo "$CONFIG_JSON" | python3 -c "
 import sys, json
 try:
-    data = json.load(sys.stdin)
-    outbounds = data.get('obj', [])
-    if outbounds is None: outbounds = []
+    data = json.loads(sys.stdin.read())
+    # В ответе getConfigJson приходит объект с полем 'obj' (строка JSON или объект)
+    if isinstance(data.get('obj'), str):
+        config = json.loads(data['obj'])
+    else:
+        config = data.get('obj', {})
+    
+    outbounds = config.get('outbounds', [])
     for obj in outbounds:
         if obj.get('tag') == 'warp':
             print('true')
             sys.exit(0)
-except: pass
+except Exception as e:
+    pass
 print('false')
 " 2>/dev/null || echo "false")
 
 if [[ "$WARP_EXISTS" == "true" ]]; then
-    log "Outbound 'warp' уже существует."
+    log "Outbound 'warp' найден в конфигурации Xray."
 else
-    info "Создание Outbound для Warp (SOCKS5 127.0.0.1:1080)..."
-    WARP_JSON=$(cat <<EOF
-{
-  "remark": "warp",
-  "protocol": "socks",
-  "tag": "warp",
-  "settings": "{\"servers\": [{\"address\": \"127.0.0.1\", \"port\": 1080}]}"
-}
-EOF
-)
-    WARP_RES=$(curl -s -X POST "${PANEL_URL}/panel/api/outbounds/add" -b "$COOKIE_FILE" -H "Content-Type: application/json" -d "$WARP_JSON")
-    if [[ "$WARP_RES" == *"true"* ]]; then
-        log "Outbound Warp успешно добавлен!"
-    else
-        warn "Не удалось добавить Outbound Warp."
-        echo "DEBUG: API Outbound Response: $WARP_RES"
-    fi
+    warn "Outbound 'warp' НЕ найден в панели 3x-ui."
+    echo -e "${YELLOW}Добавьте Warp и правила маршрутизации вручную в веб-интерфейсе:${NC}"
+    echo -e "1. В 'Xray Setting' -> 'Outbounds' добавьте SOCKS: Address: ${CYAN}127.0.0.1${NC}, Port: ${CYAN}1080${NC}, Tag: ${CYAN}warp${NC}"
+    echo -e "2. В 'Xray Setting' -> 'Routing' добавьте правило: Type: ${CYAN}field${NC}, OutboundTag: ${CYAN}warp${NC}, Domain: ${CYAN}geosite:openai, geosite:netflix, geosite:disney, geosite:primevideo${NC}"
+    echo -e "3. Нажмите 'Save and Restart' в углу."
+    echo ""
 fi
 
 rm -f "$COOKIE_FILE"

@@ -82,7 +82,7 @@ apt install -y \
     ufw fail2ban \
     unattended-upgrades apt-listchanges \
     qrencode jq \
-    htop net-tools
+    htop net-tools apache2-utils
 log "Пакеты установлены"
 
 # =============================================
@@ -161,9 +161,6 @@ ufw allow "${VLESS_PORT:-443}/tcp" comment 'VLESS REALITY'
 
 # Hysteria 2 (UDP)
 ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria 2'
-
-# Hysteria 2 (UDP)
-ufw allow "${HYSTERIA_PORT:-443}/udp" comment 'Hysteria2'
 
 # AdGuard Home
 ufw allow "${ADGUARD_PORT}/tcp" comment 'AdGuard Home'

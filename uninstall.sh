@@ -63,9 +63,8 @@ fi
 UNIQUE_PORTS=$(echo "${PORTS_TO_CLEAR[@]}" | tr ' ' '\n' | sort -u)
 
 for PORT in $UNIQUE_PORTS; do
-    # Пропускаем стандартный SSH (22), чтобы не выкинуло из системы,
-    # если пользователь не менял порт в .env
-    [[ "$PORT" == "22" ]] && continue
+    # Пропускаем стандартный SSH (22) и текущий SSH_PORT, чтобы не выкинуло из системы
+    [[ "$PORT" == "22" || "$PORT" == "${SSH_PORT:-22}" ]] && continue
     
     PIDS=$(ss -tulpn | grep ":$PORT " | awk '{print $NF}' | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)
     if [[ -n "$PIDS" ]]; then

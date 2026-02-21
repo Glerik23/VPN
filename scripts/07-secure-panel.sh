@@ -62,7 +62,7 @@ info "Меняем порт панели: ${OLD_PORT} → ${NEW_PORT}"
 # =============================================
 info "Обновление порта в контейнере 3x-ui..."
 
-docker exec -it 3x-ui /app/x-ui setting -port "$NEW_PORT" 2>/dev/null || \
+docker exec -i 3x-ui /app/x-ui setting -port "$NEW_PORT" 2>/dev/null || \
     err "Не удалось изменить порт. Проверь, запущен ли контейнер: docker compose ps"
 
 log "Порт в 3x-ui изменён на ${NEW_PORT}"
@@ -73,7 +73,7 @@ log "Порт в 3x-ui изменён на ${NEW_PORT}"
 info "Обновление правил фаервола..."
 
 ufw allow "${NEW_PORT}/tcp" comment '3x-ui Panel (new)' 2>/dev/null
-ufw deny "${OLD_PORT}/tcp" 2>/dev/null || true
+ufw delete allow "${OLD_PORT}/tcp" 2>/dev/null || true
 
 log "Фаервол обновлён: ${OLD_PORT} закрыт, ${NEW_PORT} открыт"
 

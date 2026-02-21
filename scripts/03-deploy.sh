@@ -91,7 +91,7 @@ fi
 sed -i "s|__HYSTERIA_PASSWORD__|${HYSTERIA_PASSWORD}|g" "${HYSTERIA_CONFIG}.tmp"
 sed -i "s|__HYSTERIA_UP__|${HYSTERIA_UP_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
 sed -i "s|__HYSTERIA_DOWN__|${HYSTERIA_DOWN_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
-sed -i "s|__HYSTERIA_MASQUERADE__|https://${REALITY_SNI:-www.microsoft.com}|g" "${HYSTERIA_CONFIG}.tmp"
+sed -i "s|__HYSTERIA_MASQUERADE__|${REALITY_SNI:-www.microsoft.com}|g" "${HYSTERIA_CONFIG}.tmp"
 sed -i "s|__HYSTERIA_OBFS_PASSWORD__|${HYSTERIA_OBFS_PASSWORD:-}|g" "${HYSTERIA_CONFIG}.tmp"
 
 mv "${HYSTERIA_CONFIG}.tmp" "$HYSTERIA_CONFIG"

@@ -91,7 +91,5 @@ volumes:
     name: 3xui-db
   3xui-cert:
     name: 3xui-cert
-  hysteria2-cert:
-    name: hysteria2-cert
   warp-conf:
     name: warp-conf

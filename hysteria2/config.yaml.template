@@ -17,7 +17,7 @@ auth:
 masquerade:
   type: proxy
   proxy:
-    url: https://__REALITY_SNI_PLACEHOLDER__
+    url: https://__HYSTERIA_MASQUERADE__
     rewriteHost: true
 
 # Подсказки по пропускной способности
@@ -33,3 +33,9 @@ quic:
   maxConnReceiveWindow: 20971520
   maxIdleTimeout: 30s
   keepAlivePeriod: 10s
+
+# Обфускация (Salamander) — скрывает UDP-трафик от DPI
+obfs:
+  type: salamander
+  salamander:
+    password: __HYSTERIA_OBFS_PASSWORD__

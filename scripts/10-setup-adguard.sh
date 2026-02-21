@@ -32,14 +32,19 @@ try:
     import bcrypt
     print(bcrypt.hashpw('$ADMIN_PASS'.encode(), bcrypt.gensalt()).decode())
 except ImportError:
-    # Если bcrypt нет, используем метод через passlib или эмулируем
     try:
         from passlib.hash import bcrypt
         print(bcrypt.hash('$ADMIN_PASS'))
     except ImportError:
-        # Резервный вариант: если ничего нет, оставляем как есть, AdGuard предложит сменить при первом входе
-        print('$ADMIN_PASS')
-")
+        import sys
+        sys.exit(1)
+" 2>/dev/null || {
+    if command -v htpasswd >/dev/null; then
+        htpasswd -bnBC 10 \"\" \"$ADMIN_PASS\" | tr -d ':\n'
+    else
+        echo \"$ADMIN_PASS\"
+    fi
+})
 
 cat > "$ADGUARD_CONF_DIR/AdGuardHome.yaml" <<EOF
 bind_host: 0.0.0.0
@@ -54,8 +59,6 @@ dns:
   upstream_dns:
     - https://dns.cloudflare.com/dns-query
     - https://dns.google/dns-query
-    - 1.1.1.1
-    - 8.8.8.8
 filtering:
   enabled: true
   interval: 24

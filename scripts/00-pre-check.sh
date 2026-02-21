@@ -61,7 +61,7 @@ done
 # Проверка занятости критических портов
 info "Проверка сетевых портов..."
 for PORT in 80 443; do
-    if netstat -tuln 2>/dev/null | grep -q ":$PORT "; then
+    if ss -tuln 2>/dev/null | grep -q ":$PORT "; then
         # Проверяем, не Docker ли это уже
         if ! ss -lnpt | grep ":$PORT " | grep -q "docker"; then
             warn "Порт $PORT уже занят другим процессом! Это может помешать установке."
@@ -73,7 +73,7 @@ done
 # Проверка версии ядра для BBR
 info "Проверка совместимости BBR..."
 KERNEL_VER=$(uname -r | cut -d. -f1,2)
-if (( $(echo "$KERNEL_VER < 4.9" | bc -l) )); then
+if ! awk "BEGIN{exit !($KERNEL_VER >= 4.9)}"; then
     warn "Версия ядра ($KERNEL_VER) слишком старая для BBR. Оптимизация сети будет ограничена."
 fi
 
