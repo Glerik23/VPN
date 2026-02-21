@@ -27,7 +27,7 @@ source "$ENV_FILE"
 
 # Список обязательных переменных и их дефолтных (запрещенных) значений
 declare -A CHECKS=(
-    ["SERVER_IP"]="YOUR_SERVER_IP"
+    # SERVER_IP теперь определяется автоматически, но пользователь может задать жестко
     ["ROOT_PASSWORD"]="CHANGE_ME_STRONG_PASSWORD"
     ["XUI_PASSWORD"]="CHANGE_ME_STRONG_PASSWORD"
     ["TG_BOT_TOKEN"]=""
@@ -49,6 +49,9 @@ for VAR in "${!CHECKS[@]}"; do
     VAL="${!VAR:-}"
     DEFAULT_VAL="${CHECKS[$VAR]}"
     
+    # Игнорируем проверку SERVER_IP, так как мы его определим сами
+    if [[ "$VAR" == "SERVER_IP" ]]; then continue; fi
+
     if [[ -z "$VAL" ]]; then
         warn "Переменная $VAR не установлена в .env!"
         FAILED=1
@@ -57,6 +60,21 @@ for VAR in "${!CHECKS[@]}"; do
         FAILED=1
     fi
 done
+
+# --- Автоопределение SERVER_IP ---
+if [[ -z "${SERVER_IP:-}" ]] || [[ "$SERVER_IP" == "YOUR_SERVER_IP" ]]; then
+    info "SERVER_IP не задан или задан по умолчанию. Попытка автоматического определения..."
+    DETECTED_IP=$(curl -s --connect-timeout 5 ifconfig.me || curl -s --connect-timeout 5 icanhazip.com || true)
+    
+    if [[ -n "$DETECTED_IP" ]]; then
+        log "Успешно определен публичный IP сервера: $DETECTED_IP"
+        # Записываем в .env чтобы другие скрипты могли его использовать
+        sed -i "s/^SERVER_IP=.*/SERVER_IP=$DETECTED_IP/" "$ENV_FILE"
+        export SERVER_IP="$DETECTED_IP"
+    else
+        err "Не удалось автоматически определить IP адрес сервера. Пожалуйста, укажите SERVER_IP в .env вручную."
+    fi
+fi
 
 # Проверка занятости критических портов
 info "Проверка сетевых портов..."

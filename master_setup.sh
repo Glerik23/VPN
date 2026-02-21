@@ -74,6 +74,16 @@ info "Шаг 3/5: Запуск контейнеров (VPN, Warp, AdGuard)..."
 ./scripts/03-deploy.sh --no-prompt
 log "Контейнеры запущены."
 
+# 5.5 Автоматическое обновление GeoData
+info "Шаг 3.5/5: Настройка автообновления GeoData (маршрутизация РФ)..."
+chmod +x ./scripts/12-update-geodata.sh
+./scripts/12-update-geodata.sh 2>/dev/null || warn "Сбой при первом скачивании GeoData. Крон настроен."
+
+if ! crontab -l 2>/dev/null | grep -q "12-update-geodata.sh"; then
+    (crontab -l 2>/dev/null; echo "0 3 * * * $PROJECT_DIR/scripts/12-update-geodata.sh >/dev/null 2>&1") | crontab -
+    log "Настроен cron для ежедневного автообновления GeoData."
+fi
+
 # 6. Настройка Telegram Бота (если есть токен)
 source .env
 if [[ -n "${TG_BOT_TOKEN:-}" ]]; then

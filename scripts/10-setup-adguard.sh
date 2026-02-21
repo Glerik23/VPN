@@ -62,6 +62,19 @@ dns:
 filtering:
   enabled: true
   interval: 24
+  filters:
+    - enabled: true
+      url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+      name: AdGuard DNS filter
+      id: 1
+    - enabled: true
+      url: https://big.oisd.nl
+      name: OISD Big
+      id: 2
+    - enabled: true
+      url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
+      name: AdAway Default Blocklist
+      id: 3
 filters:
   - enabled: true
     id: 1

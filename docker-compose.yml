@@ -86,6 +86,17 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # =============================================
+  # Watchtower — Автообновление контейнеров
+  # =============================================
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup --schedule "0 0 4 * * *" # Updates every day at 4 AM
+
 volumes:
   3xui-db:
     name: 3xui-db

@@ -157,11 +157,70 @@ print('false')
 if [[ "$WARP_EXISTS" == "true" ]]; then
     log "Outbound 'warp' найден в конфигурации Xray."
 else
-    warn "Outbound 'warp' НЕ найден в панели 3x-ui."
-    echo -e "${YELLOW}Добавьте Warp и правила маршрутизации вручную в веб-интерфейсе:${NC}"
-    echo -e "1. В 'Xray Setting' -> 'Outbounds' добавьте SOCKS: Address: ${CYAN}127.0.0.1${NC}, Port: ${CYAN}1080${NC}, Tag: ${CYAN}warp${NC}"
-    echo -e "2. В 'Xray Setting' -> 'Routing' добавьте правило: Type: ${CYAN}field${NC}, OutboundTag: ${CYAN}warp${NC}, Domain: ${CYAN}geosite:openai, geosite:netflix, geosite:disney, geosite:primevideo${NC}"
-    echo -e "3. Нажмите 'Save and Restart' в углу."
+    warn "Outbound 'warp' НЕ найден. Добавляем Warp и маршрутизацию автоматически..."
+    
+    VOLUME_NAME=$(docker volume ls -q | grep "3xui-db" | head -n 1)
+    if [[ -n "$VOLUME_NAME" ]]; then
+        docker run --rm -v "${VOLUME_NAME}:/etc/x-ui/" -v "${PROJECT_DIR}/scripts:/scripts" python:3-slim bash -c "pip install sqlite3 2>/dev/null; python3 -c \"
+import sqlite3, json
+
+db_path = '/etc/x-ui/x-ui.db'
+try:
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute(\\\"SELECT value FROM settings WHERE key='xrayTemplateConfig'\\\")
+    row = c.fetchone()
+    if row:
+        config = json.loads(row[0])
+        
+        # Add warp outbound
+        outbounds = config.setdefault('outbounds', [])
+        if not any(o.get('tag') == 'warp' for o in outbounds):
+            outbounds.append({
+                'protocol': 'socks',
+                'tag': 'warp',
+                'settings': {
+                    'servers': [{'address': '127.0.0.1', 'port': 1080}]
+                }
+            })
+            
+        # Add routing rules
+        routing = config.setdefault('routing', {})
+        rules = routing.setdefault('rules', [])
+        
+        if not any(r.get('outboundTag') == 'warp' for r in rules):
+            rules.insert(0, {
+                'type': 'field',
+                'outboundTag': 'warp',
+                'domain': [
+                    'geosite:openai',
+                    'geosite:netflix',
+                    'geosite:disney',
+                    'geosite:primevideo',
+                    'geosite:twitter',
+                    'geosite:instagram',
+                    'geosite:meta',
+                    'domain:chatgpt.com',
+                    'domain:antigravity.com'
+                ]
+            })
+            
+        c.execute(\\\"UPDATE settings SET value=? WHERE key='xrayTemplateConfig'\\\", (json.dumps(config, indent=2),))
+        conn.commit()
+        print('Warp маршрутизация успешно добавлена в шаблон Xray!')
+except Exception as e:
+    print(f'Ошибка автоматической настройки: {e}')
+finally:
+    if 'conn' in locals():
+        conn.close()
+\""
+        
+        # Перезапуск 3x-ui для применения шаблона
+        docker restart 3x-ui >/dev/null 2>&1
+        log "Панель 3x-ui перезапущена для применения новых правил маршрутизации."
+    else:
+        err "Не удалось найти Volume 3xui-db для автоматической настройки."
+    fi
     echo ""
 fi
 
