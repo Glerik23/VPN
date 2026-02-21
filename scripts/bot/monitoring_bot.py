@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Определение путей относительно скрипта
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 ENV_PATH = os.path.join(PROJECT_DIR, '.env')
 
 load_dotenv(ENV_PATH)

@@ -46,7 +46,14 @@ fi
 # =============================================
 # 1. Ссылка VLESS + REALITY
 # =============================================
-VLESS_LINK="vless://${VLESS_UUID}@${SERVER_IP}:${VLESS_PORT:-443}?type=tcp&security=reality&pbk=${REALITY_PUBLIC_KEY}&fp=chrome&sni=${REALITY_SNI:-www.microsoft.com}&sid=${REALITY_SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#VPN-VLESS-REALITY"
+# Поддержка IPv6 (заключение в квадратные скобки)
+if [[ "$SERVER_IP" == *":"* ]]; then
+    URI_IP="[$SERVER_IP]"
+else
+    URI_IP="$SERVER_IP"
+fi
+
+VLESS_LINK="vless://${VLESS_UUID}@${URI_IP}:${VLESS_PORT:-443}?type=tcp&security=reality&pbk=${REALITY_PUBLIC_KEY}&fp=chrome&sni=${REALITY_SNI:-www.microsoft.com}&sid=${REALITY_SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#VPN-VLESS-REALITY"
 
 if [[ "$LINKS_ONLY" == "true" ]]; then
     echo "$VLESS_LINK"
@@ -70,7 +77,7 @@ fi
 # =============================================
 # 2. Ссылка Hysteria2
 # =============================================
-HYSTERIA_LINK="hysteria2://${HYSTERIA_PASSWORD}@${SERVER_IP}:${HYSTERIA_PORT:-443}?insecure=1&sni=${REALITY_SNI:-www.microsoft.com}&obfs=salamander&obfs-password=${HYSTERIA_OBFS_PASSWORD}#VPN-Hysteria2"
+HYSTERIA_LINK="hysteria2://${HYSTERIA_PASSWORD}@${URI_IP}:${HYSTERIA_PORT:-443}?insecure=1&sni=${REALITY_SNI:-www.microsoft.com}&obfs=salamander&obfs-password=${HYSTERIA_OBFS_PASSWORD}#VPN-Hysteria2"
 
 if [[ "$LINKS_ONLY" == "true" ]]; then
     echo "$HYSTERIA_LINK"
