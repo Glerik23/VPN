@@ -59,6 +59,12 @@ fi
 
 log "Конфигурация проверена."
 
+info "Установка Python зависимостей..."
+apt-get install -y python3-pip python3-venv >/dev/null 2>&1 || true
+python3 -m pip install --break-system-packages -r scripts/bot/requirements.txt >/dev/null 2>&1 || python3 -m pip install -r scripts/bot/requirements.txt >/dev/null 2>&1
+log "Python зависимости установлены."
+
+
 # 3. Базовая подготовка сервера
 info "Шаг 1/5: Подготовка сервера и безопасность..."
 ./scripts/01-init-server.sh
@@ -76,11 +82,10 @@ log "Контейнеры запущены."
 
 # 5.5 Автоматическое обновление GeoData
 info "Шаг 3.5/5: Настройка автообновления GeoData (маршрутизация РФ)..."
-chmod +x ./scripts/12-update-geodata.sh
-./scripts/12-update-geodata.sh 2>/dev/null || warn "Сбой при первом скачивании GeoData. Крон настроен."
+python3 ./scripts/bot/vpn_manager.py --update-geodata 2>/dev/null || warn "Сбой при первом скачивании GeoData. Крон настроен."
 
-if ! crontab -l 2>/dev/null | grep -q "12-update-geodata.sh"; then
-    (crontab -l 2>/dev/null || true; echo "0 3 * * * $PROJECT_DIR/scripts/12-update-geodata.sh >/dev/null 2>&1") | crontab -
+if ! crontab -l 2>/dev/null | grep -q "vpn_manager.py --update-geodata"; then
+    (crontab -l 2>/dev/null || true; echo "0 3 * * * /usr/bin/python3 $PROJECT_DIR/scripts/bot/vpn_manager.py --update-geodata >/dev/null 2>&1") | crontab -
     log "Настроен cron для ежедневного автообновления GeoData."
 fi
 
@@ -96,7 +101,7 @@ fi
 
 # 7. Авто-настройка Панели и AdGuard
 info "Шаг 5/5: Финальная настройка панелей..."
-./scripts/08-setup-inbound.sh
+python3 ./scripts/bot/vpn_manager.py --setup-inbound
 ./scripts/10-setup-adguard.sh
 log "Панели настроены."
 
@@ -106,4 +111,4 @@ echo "   ✨ УСТАНОВКА ЗАВЕРШЕНА УСПЕШНО! ✨"
 echo "====================================================="
 echo -e "${NC}"
 info "Ваш VPN готов к работе."
-info "Выполните ./scripts/05-show-clients.sh для получения ссылок."
+info "Выполните python3 ./scripts/bot/vpn_manager.py --show-clients для получения ссылок."

@@ -64,7 +64,7 @@ log "Проверка зависимостей пройдена"
 # =============================================
 if [[ -z "${REALITY_PRIVATE_KEY:-}" || -z "${VLESS_UUID:-}" || -z "${HYSTERIA_PASSWORD:-}" || -z "${HYSTERIA_OBFS_PASSWORD:-}" ]]; then
     info "Ключи не найдены в .env, генерируем..."
-    bash "$SCRIPT_DIR/04-generate-keys.sh"
+    python3 "$SCRIPT_DIR/bot/vpn_manager.py" --generate-keys
     # Перезагрузка .env после генерации
     source "$PROJECT_DIR/.env"
     log "Ключи сгенерированы и сохранены в .env"
@@ -160,7 +160,7 @@ echo "     5. Client UUID:     ${VLESS_UUID}"
 echo ""
 echo "  🔗 Hysteria2 работает на UDP :${HYSTERIA_PORT:-443}"
 echo ""
-echo "  Запусти ./05-show-clients.sh чтобы получить ссылки подключения"
+echo "  Запусти python3 ./scripts/bot/vpn_manager.py --show-clients чтобы получить ссылки подключения"
 
 # Обработка аргументов
 SKIP_PROMPT=false
@@ -179,8 +179,7 @@ else
 fi
 
 if [[ "$AUTO_XUI" =~ ^[Yy]$ ]]; then
-    chmod +x "$SCRIPT_DIR/08-setup-inbound.sh"
-    bash "$SCRIPT_DIR/08-setup-inbound.sh"
+    python3 "$SCRIPT_DIR/bot/vpn_manager.py" --setup-inbound
 fi
 
 echo ""
