@@ -121,24 +121,120 @@ class VPNManager:
                     "newUsername": username, "newPassword": password
                 })
             else:
-                raise Exception("Failed to login to 3x-ui")
+                # Our .env is wrong and admin/admin is wrong. The user probably changed it via web UI.
+                # Let's extract the real credentials from the DB and update .env.
+                print("Failed to login with .env credentials. Attempting to recover from SQLite...")
+                volume_out = subprocess.run(["docker", "volume", "ls", "-q"], capture_output=True, text=True)
+                volume_name = None
+                for line in volume_out.stdout.splitlines():
+                    if "3xui-db" in line:
+                        volume_name = line.strip()
+                        break
+
+                if volume_name:
+                    import ast
+                    py_extract_script = """
+import sqlite3
+try:
+    conn = sqlite3.connect('/etc/x-ui/x-ui.db')
+    c = conn.cursor()
+    c.execute("SELECT username, password FROM users LIMIT 1")
+    row = c.fetchone()
+    if row:
+        print(repr(row))
+except Exception:
+    pass
+finally:
+    if 'conn' in locals(): conn.close()
+"""
+                    out = subprocess.run([
+                        "docker", "run", "--rm", "-i",
+                        "-v", f"{volume_name}:/etc/x-ui/", 
+                        "alpine", "sh", "-c", "apk add --no-cache python3 sqlite && python3 -"
+                    ], input=py_extract_script, capture_output=True, text=True, check=False)
+                    
+                    found = False
+                    for line in out.stdout.splitlines():
+                        if line.startswith('('):
+                            try:
+                                real_user, real_pass = ast.literal_eval(line.strip())
+                                print(f"Recovered credentials from DB. Updating .env...")
+                                self.set_env("XUI_USERNAME", real_user)
+                                self.set_env("XUI_PASSWORD", real_pass)
+                                # Retry login
+                                res = session.post(f"{url}/login", data={"username": real_user, "password": real_pass})
+                                if res.json().get('success'):
+                                    found = True
+                                break
+                            except Exception:
+                                pass
+                    if not found:
+                        raise Exception("Failed to login to 3x-ui and failed to recover credentials from DB")
+                else:
+                    raise Exception("Failed to login to 3x-ui and could not find 3xui-db volume")
         
         return session, url
 
     def setup_inbound(self):
         session, url = self.login_xui()
         
-        # Find existing 443 inbound
+        # Attempt to delete via API first
         res = session.get(f"{url}/panel/api/inbounds/list")
         existing_id = None
-        for inb in res.json().get('obj', []):
-            if inb.get('port') == 443:
-                existing_id = inb.get('id')
+        try:
+            for inb in res.json().get('obj', []):
+                if inb.get('port') == 443:
+                    existing_id = inb.get('id')
+                    session.post(f"{url}/panel/api/inbounds/del/{existing_id}")
+        except Exception:
+            pass
+
+        # Forcefully delete any stuck 443 port via SQLite (Fallback)
+        volume_out = subprocess.run(["docker", "volume", "ls", "-q"], capture_output=True, text=True)
+        volume_name = None
+        for line in volume_out.stdout.splitlines():
+            if "3xui-db" in line:
+                volume_name = line.strip()
                 break
-                
-        if existing_id:
-            session.post(f"{url}/panel/api/inbounds/del/{existing_id}")
+
+        if volume_name:
+            py_delete_script = """
+import sqlite3
+db_path = '/etc/x-ui/x-ui.db'
+try:
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("DELETE FROM inbounds WHERE port=443")
+    conn.commit()
+except Exception as e:
+    pass
+finally:
+    if 'conn' in locals():
+        conn.close()
+"""
+            subprocess.run([
+                "docker", "run", "--rm", "-i",
+                "-v", f"{volume_name}:/etc/x-ui/", 
+                "alpine", "sh", "-c", "apk add --no-cache python3 sqlite && python3 -"
+            ], input=py_delete_script, text=True, check=False)
             
+            # Restart to apply deletion before creating new
+            subprocess.run(["docker", "restart", "3x-ui"], check=False)
+            import time
+            import requests
+            print("Waiting for 3x-ui to boot...")
+            for _ in range(30):
+                try:
+                    res = requests.get(f"http://localhost:{self.get_env('XUI_PORT', '2053')}", timeout=2)
+                    if res.status_code == 200 and 'Welcome' in res.text:
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+            time.sleep(3)
+            # Re-authenticate because the session is lost on container restart
+            session, url = self.login_xui()
+
         sni = self.get_env("REALITY_SNI", "www.microsoft.com")
         
         # Create new inbound
@@ -168,43 +264,130 @@ class VPNManager:
             "sniffing": json.dumps({"enabled": True, "destOverride": ["http", "tls"]})
         }
         res = session.post(f"{url}/panel/api/inbounds/add", json=inbound_data)
-        if not res.json().get('success'):
-            raise Exception(f"Failed to add inbound: {res.text}")
+        try:
+            if res.status_code == 200 and not res.text.strip():
+                pass # Success! (Workaround for empty OK response)
+            elif not res.json().get('success'):
+                raise Exception(f"Failed to add inbound: {res.text}")
+        except json.decoder.JSONDecodeError:
+            print(f"Failed to parse JSON for inbounds/add. Status: {res.status_code}, Response: {repr(res.text[:500])}")
+            # If we got HTML, it means login was incomplete or session is invalid. Let's force a login and retry once.
+            print("Retrying login and add...")
+            session, url = self.login_xui()
+            res = session.post(f"{url}/panel/api/inbounds/add", json=inbound_data)
+            if res.status_code == 200 and not res.text.strip():
+                pass
+            elif not res.json().get('success'):
+                raise Exception(f"Failed to add inbound on retry: {res.text}")
             
         # Warp Outbound Setup
-        res = session.get(f"{url}/panel/api/server/getConfigJson")
-        config_obj = res.json().get('obj', {})
-        if isinstance(config_obj, str):
-            config_obj = json.loads(config_obj)
+        print("Configuring Warp outbound via SQLite...")
+        
+        # We need to find the exact volume name for 3xui-db
+        volume_out = subprocess.run(["docker", "volume", "ls", "-q"], capture_output=True, text=True)
+        volume_name = None
+        for line in volume_out.stdout.splitlines():
+            if "3xui-db" in line:
+                volume_name = line.strip()
+                break
+                
+        if volume_name:
+            # We run python script inside the running 3x-ui container, which already has sqlite3
+            # or we can use alpine. However, running inside 3x-ui is the safest since it's already pulled and running.
+            py_script = """
+import sqlite3
+import json
+
+db_path = '/etc/x-ui/x-ui.db'
+try:
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key='xrayTemplateConfig'")
+    row = c.fetchone()
+    
+    is_new = False
+    if row and row[0]:
+        config = json.loads(row[0])
+    else:
+        config = {
+          "log": {"access": "", "error": "", "loglevel": "warning"},
+          "inbounds": [],
+          "outbounds": [
+            {"tag": "direct", "protocol": "freedom", "settings": {"domainStrategy": "UseIP"}},
+            {"tag": "blocked", "protocol": "blackhole", "settings": {}}
+          ],
+          "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+              {"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
+              {"type": "field", "outboundTag": "blocked", "ip": ["geoip:private"]},
+              {"type": "field", "outboundTag": "blocked", "protocol": ["bittorrent"]}
+            ]
+          }
+        }
+        is_new = True
+        
+    # Add warp outbound
+    outbounds = config.setdefault('outbounds', [])
+    if not any(o.get('tag') == 'warp' for o in outbounds):
+        outbounds.append({
+            'protocol': 'socks',
+            'tag': 'warp',
+            'settings': {
+                'servers': [{'address': '127.0.0.1', 'port': 1080}]
+            }
+        })
+        
+    # Add routing rules
+    routing = config.setdefault('routing', {})
+    rules = routing.setdefault('rules', [])
+    
+    if not any(r.get('outboundTag') == 'warp' for r in rules):
+        rules.insert(0, {
+            'type': 'field',
+            'outboundTag': 'warp',
+            'domain': [
+                'geosite:openai',
+                'geosite:netflix',
+                'geosite:disney',
+                'geosite:primevideo',
+                'geosite:twitter',
+                'geosite:instagram',
+                'geosite:meta',
+                'domain:chatgpt.com',
+                'domain:antigravity.com'
+            ]
+        })
+        
+    if is_new:
+        c.execute("INSERT INTO settings (key, value) VALUES ('xrayTemplateConfig', ?)", (json.dumps(config, indent=2),))
+    else:
+        c.execute("UPDATE settings SET value=? WHERE key='xrayTemplateConfig'", (json.dumps(config, indent=2),))
+    
+    conn.commit()
+    print('Warp settings configured in template DB.')
+except Exception as e:
+    print(f'SQLite error: {e}')
+finally:
+    if 'conn' in locals():
+        conn.close()
+"""
+            # Install python3 in 3x-ui if it's missing (it usually has it or we can install it)
+            # Actually, Alpine might not have python3 by default, but it does have sqlite3 and jq.
+            # Even better: The host machine running this script HAS python3 and sqlite3!
+            # The docker volume is usually located at /var/lib/docker/volumes/3xui-db/_data/x-ui.db
+            # Let's use docker run with Alpine (which is guaranteed locally from previous steps) to install python3 and run it,
+            # Pass the python script via standard input to avoid any shell quoting/escape issues.
+            subprocess.run([
+                "docker", "run", "--rm", "-i",
+                "-v", f"{volume_name}:/etc/x-ui/", 
+                "alpine", "sh", "-c", "apk add --no-cache python3 sqlite && python3 -"
+            ], input=py_script, text=True, check=False)
             
-        outbounds = config_obj.get('outbounds', [])
-        if not any(o.get('tag') == 'warp' for o in outbounds):
-            outbounds.append({
-                'protocol': 'socks',
-                'tag': 'warp',
-                'settings': {'servers': [{'address': '127.0.0.1', 'port': 1080}]}
-            })
-            config_obj['outbounds'] = outbounds
-            
-            # Routing
-            routing = config_obj.setdefault('routing', {})
-            rules = routing.setdefault('rules', [])
-            if not any(r.get('outboundTag') == 'warp' for r in rules):
-                rules.insert(0, {
-                    'type': 'field',
-                    'outboundTag': 'warp',
-                    'domain': [
-                        'geosite:openai', 'geosite:netflix', 'geosite:disney',
-                        'geosite:primevideo', 'geosite:twitter', 'geosite:instagram',
-                        'geosite:meta', 'domain:chatgpt.com', 'domain:antigravity.com'
-                    ]
-                })
-            
-            # Since we modify xray template via sqlite directly in the bash script, let's do it similarly just to be safe if getConfigJson doesn't save to template DB
-            # but wait, can we update setting via API? Yes: /panel/setting/update
-            settings_to_update = {"xrayTemplateConfig": json.dumps(config_obj, indent=2)}
-            session.post(f"{url}/panel/setting/update", data=settings_to_update)
             subprocess.run(["docker", "restart", "3x-ui"], check=False)
+            print("Restarted 3x-ui to apply Warp routing.")
+        else:
+            print("Warning: Could not find 3xui-db volume to configure Warp.")
 
     def get_client_links(self):
         vless_uuid = self.get_env("VLESS_UUID")

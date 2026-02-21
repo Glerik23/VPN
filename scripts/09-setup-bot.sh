@@ -8,7 +8,7 @@ log()  { echo -e "\033[0;32m[✓]\033[0m $1"; }
 info "Настройка окружения для бота..."
 apt-get update && apt-get install -y python3-pip python3-venv
 python3 -m venv /root/VPN/scripts/bot/venv
-/root/VPN/scripts/bot/venv/bin/pip install psutil requests python-dotenv pyTelegramBotAPI
+/root/VPN/scripts/bot/venv/bin/pip install -r /root/VPN/scripts/bot/requirements.txt
 
 # Создание systemd сервиса для бота
 cat > /etc/systemd/system/VPN-bot.service <<EOF
