@@ -80,7 +80,7 @@ chmod +x ./scripts/12-update-geodata.sh
 ./scripts/12-update-geodata.sh 2>/dev/null || warn "Сбой при первом скачивании GeoData. Крон настроен."
 
 if ! crontab -l 2>/dev/null | grep -q "12-update-geodata.sh"; then
-    (crontab -l 2>/dev/null; echo "0 3 * * * $PROJECT_DIR/scripts/12-update-geodata.sh >/dev/null 2>&1") | crontab -
+    (crontab -l 2>/dev/null || true; echo "0 3 * * * $PROJECT_DIR/scripts/12-update-geodata.sh >/dev/null 2>&1") | crontab -
     log "Настроен cron для ежедневного автообновления GeoData."
 fi
 

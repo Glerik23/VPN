@@ -88,12 +88,15 @@ generate_locally() {
 info "Проверка Docker и образа..."
 CAN_USE_DOCKER=false
 
+# Используем специализированный легковесный образ Xray, так как в 3x-ui бинарник скачивается при первом старте
+KEY_IMAGE="teddysun/xray:latest"
+
 # Проверяем, что docker вообще жив и может выполнить простую команду
 if command -v docker &> /dev/null && timeout 5s docker ps &>/dev/null; then
     # Пробуем pull с таймаутом 30 секунд (только если образа нет)
-    if [[ "$(docker images -q "$XRAY_IMAGE" 2> /dev/null)" == "" ]]; then
-        info "Загрузка вспомогательного образа Docker..."
-        if timeout 60s docker pull "$XRAY_IMAGE" &>/dev/null; then
+    if [[ "$(docker images -q "$KEY_IMAGE" 2> /dev/null)" == "" ]]; then
+        info "Загрузка вспомогательного образа Docker (teddysun/xray)..."
+        if timeout 60s docker pull "$KEY_IMAGE" &>/dev/null; then
             CAN_USE_DOCKER=true
         fi
     else
@@ -103,20 +106,17 @@ fi
 
 if [ "$CAN_USE_DOCKER" = true ]; then
     info "Генерация через Docker..."
-    # Добавляем таймаут 15сек на сам запуск контейнера. Используем sh -c, чтобы найти бинарник xray
-    XRAY_CMD="if command -v xray >/dev/null; then xray x25519; elif [ -f /usr/local/x-ui/bin/xray-linux-amd64 ]; then /usr/local/x-ui/bin/xray-linux-amd64 x25519; elif [ -f /app/xray ]; then /app/xray x25519; else exit 1; fi"
-    UUID_CMD="if command -v xray >/dev/null; then xray uuid; elif [ -f /usr/local/x-ui/bin/xray-linux-amd64 ]; then /usr/local/x-ui/bin/xray-linux-amd64 uuid; elif [ -f /app/xray ]; then /app/xray uuid; else exit 1; fi"
-    
-    if RAW_KEYS=$(timeout 15s docker run --rm --entrypoint sh "$XRAY_IMAGE" -c "$XRAY_CMD" 2>/dev/null); then
+    # Добавляем таймаут 15сек на сам запуск контейнера.
+    if RAW_KEYS=$(timeout 15s docker run --rm "$KEY_IMAGE" x25519 2>/dev/null); then
         REALITY_PRIVATE_KEY=$(echo "$RAW_KEYS" | grep -i "Private" | awk -F': ' '{print $NF}' | tr -d '\r\n ' || echo "")
         REALITY_PUBLIC_KEY=$(echo "$RAW_KEYS" | grep -i "Public" | awk -F': ' '{print $NF}' | tr -d '\r\n ' || echo "")
         
-        # Улучшенная отказоустойчивость: если grep не нашел ключи, мы обнуляем RAW_KEYS, чтобы сработал локальный фоллбек
+        # Улучшенная отказоустойчивость
         if [[ -z "$REALITY_PRIVATE_KEY" ]]; then
             warn "Не удалось извлечь ключи из ответа Docker. Использую локальную генерацию..."
             generate_locally
         else
-            VLESS_UUID=$(timeout 15s docker run --rm --entrypoint sh "$XRAY_IMAGE" -c "$UUID_CMD" 2>/dev/null | tr -d '\r\n ' || echo "")
+            VLESS_UUID=$(timeout 15s docker run --rm "$KEY_IMAGE" uuid 2>/dev/null | tr -d '\r\n ' || echo "")
         
         # Если UUID не сгенерировался через докер, генерируем локально
         if [ -z "$VLESS_UUID" ]; then
