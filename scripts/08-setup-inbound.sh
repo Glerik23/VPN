@@ -100,7 +100,7 @@ INBOUND_JSON=$(cat <<EOF
   "remark": "VLESS-REALITY-AUTO",
   "enable": true,
   "expiryTime": 0,
-  "listen": "",
+  "listen": "::",
   "port": 443,
   "protocol": "vless",
   "settings": "{\"clients\": [{\"id\": \"${VLESS_UUID}\", \"flow\": \"xtls-rprx-vision\"}], \"decryption\": \"none\", \"fallbacks\": []}",

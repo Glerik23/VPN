@@ -53,10 +53,29 @@ if [[ -f "$SCRIPT_DIR/08-setup-inbound.sh" ]]; then
     bash "$SCRIPT_DIR/08-setup-inbound.sh"
 fi
 
-# 4. Перезапускаем контейнер
+# 4. Перегенерация конфига Hysteria2
+echo "Обновление конфигурации Hysteria2..."
+HYSTERIA_CONFIG="$PROJECT_DIR/hysteria2/config.yaml"
+if [[ -f "${HYSTERIA_CONFIG}.template" ]]; then
+    # Перезагружаем переменные из .env чтобы получить свежие данные, включая новый порт
+    source "$DOTENV"
+    cp "${HYSTERIA_CONFIG}.template" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_PASSWORD__|${HYSTERIA_PASSWORD}|g" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_UP__|${HYSTERIA_UP_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_DOWN__|${HYSTERIA_DOWN_MBPS:-100} mbps|g" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_MASQUERADE__|${REALITY_SNI:-www.microsoft.com}|g" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_OBFS_PASSWORD__|${HYSTERIA_OBFS_PASSWORD:-}|g" "${HYSTERIA_CONFIG}.tmp"
+    sed -i "s|__HYSTERIA_PORT__|${NEW_PORT}|g" "${HYSTERIA_CONFIG}.tmp"
+    mv "${HYSTERIA_CONFIG}.tmp" "$HYSTERIA_CONFIG"
+else
+    echo "⚠️ Шаблон ${HYSTERIA_CONFIG}.template не найден, обновляю порт в текущем конфиге..."
+    sed -i "s/listen: :$OLD_PORT/listen: :$NEW_PORT/g" "$HYSTERIA_CONFIG"
+fi
+
+# 5. Перезапускаем контейнер
 echo "Перезапуск контейнера Hysteria2..."
 cd "$PROJECT_DIR"
-docker compose --env-file .env up -d --force-recreate hysteria2
+docker compose --env-file .env restart hysteria2
 
 echo "✅ Порт успешно изменен на $NEW_PORT"
 echo "⚠️  ВАЖНО: Теперь вам нужно обновить ссылку в вашем VPN-клиенте!"

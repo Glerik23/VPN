@@ -1,7 +1,7 @@
 # Конфигурация Hysteria 2 сервера (Template)
 # Документация: https://v2.hysteria.network/docs/
 
-listen: :443
+listen: :__HYSTERIA_PORT__
 
 # TLS — самоподписанный сертификат
 tls:
